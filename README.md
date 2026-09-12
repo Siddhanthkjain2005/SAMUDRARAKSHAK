@@ -157,3 +157,16 @@ Provider permissions govern historical GFW/SAR access. Protected-area polygons r
 Designed for future integration with authorized coastal radar, VMS, satellite AIS and government maritime feeds. No operational integration with the Indian Coast Guard, Indian Navy, or government agencies is claimed.
 
 **One ocean. One intelligence layer. Three autonomous missions.**
+
+---
+
+## Hackathon Submission Highlights
+
+- **Project Name:** SamudraRakshak AI
+- **Focus Area:** Autonomous Maritime Intelligence & Ocean Operations
+- **Core Capabilities:**
+  - **Green Route Optimization:** Weather and current-aware routing minimizing carbon emissions and fuel burn.
+  - **Dark Vessel Investigation:** Automated anomaly detection, historical identity synthesis, and multi-agent cross-referencing.
+  - **Marine Debris Response:** Dynamic drift modeling and autonomous recovery fleet coordination.
+- **Tech Stack:** Next.js (TypeScript, Tailwind CSS), FastAPI (Python 3.12, Uvicorn, SQLite WAL), geospatial processing (GeoJSON, Open-Meteo, AISStream).
+
