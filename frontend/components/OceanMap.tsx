@@ -38,6 +38,8 @@ type MapsRuntime = {
 type MapWindow = Window & { google?: { maps?: MapsRuntime }; gm_authFailure?: () => void; __samudraMapsReady?: () => void };
 
 const DEFAULT_CAMERA: Camera = { latitude: 14.35, longitude: 72.8, zoom: 6.65 };
+const INDIA_CAMERA: Camera = { latitude: 20.5, longitude: 76.5, zoom: 4.7 };
+let hasPlayedMapIntro = false;
 const EMPTY: never[] = [];
 const MAP_COLORS = { teal: "#56ddc0", blue: "#77b7ec", amber: "#f0bc72", purple: "#c3a9ef" };
 const clamp = (n: number, low: number, high: number) => Math.min(high, Math.max(low, n));
@@ -77,6 +79,20 @@ function geometryPath(geography: MapGeography): string {
   };
   if (geography.features) return geography.features.map(feature => geometry(feature.geometry)).join("");
   return geometry(geography.geometry || geography as MapGeometry);
+}
+
+function geographyBounds(geography: MapGeography | null | undefined) {
+  const bounds = { west: 180, east: -180, south: 90, north: -90 };
+  const visit = (value: unknown): void => {
+    if (!Array.isArray(value)) return;
+    if (value.length >= 2 && typeof value[0] === "number" && typeof value[1] === "number") {
+      bounds.west = Math.min(bounds.west, value[0]); bounds.east = Math.max(bounds.east, value[0]);
+      bounds.south = Math.min(bounds.south, value[1]); bounds.north = Math.max(bounds.north, value[1]);
+    } else value.forEach(visit);
+  };
+  if (geography?.features) geography.features.forEach(feature => visit(feature.geometry?.coordinates));
+  else visit(geography?.geometry?.coordinates || geography?.coordinates);
+  return bounds.east >= bounds.west ? bounds : null;
 }
 
 let mapsScriptPromise: Promise<MapsRuntime> | undefined;
@@ -127,7 +143,7 @@ function MapIcon({ kind }: { kind: "plus" | "minus" | "reset" | "globe" | "compa
 const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   googleMapsKey, vessels = EMPTY, ports = EMPTY, hotspots = EMPTY, route, marine = EMPTY,
   collectors = EMPTY, mission = "overview", selectedVesselId, onVesselSelect, onHotspotSelect,
-  onPortSelect, focus, layers: layerOverrides, geography, boundaries, protectedAreas, controlInsets, className = "", hideLegend = false,
+  onPortSelect, onCameraChange, focus, layers: layerOverrides, geography, worldGeography, boundaries, protectedAreas, controlInsets, className = "", hideLegend = false, cinematicIntro = true,
 }, ref) {
   const uid = useId().replace(/:/g, "");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -138,10 +154,18 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   const threeLibrary = useRef<Maps3DLibrary | null>(null);
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
   const [panelInsets, setPanelInsets] = useState({ left: 0, right: 0 });
-  const [camera, setCamera] = useState<Camera>(DEFAULT_CAMERA);
+  const [camera, setCamera] = useState<Camera>(() => cinematicIntro && !hasPlayedMapIntro && !focus ? INDIA_CAMERA : DEFAULT_CAMERA);
+  const playIntro = useRef(cinematicIntro && !hasPlayedMapIntro && !focus);
   const cameraRef = useRef(camera);
   const cameraAnimation = useRef(0);
+  const introTimer = useRef<number | null>(null);
+  const viewGeometryRef = useRef({ dimensions, left: 0, right: 0 });
+  viewGeometryRef.current = { dimensions, left: controlInsets?.left ?? panelInsets.left, right: controlInsets?.right ?? panelInsets.right };
+  const onCameraChangeRef = useRef(onCameraChange);
+  onCameraChangeRef.current = onCameraChange;
   const [localGeography, setLocalGeography] = useState<MapGeography | null>(null);
+  const [localWorldGeography, setLocalWorldGeography] = useState<MapGeography | null>(null);
+  const [worldStatus, setWorldStatus] = useState<"loading" | "loaded" | "unavailable">("loading");
   const [localBoundaries, setLocalBoundaries] = useState<MapGeography | null>(null);
   const [localProtectedAreas, setLocalProtectedAreas] = useState<MapGeography | null>(null);
   const [engine, setEngine] = useState<"offline" | "google" | "3d">("offline");
@@ -161,14 +185,30 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   const drag = useRef<{ x: number; y: number; camera: Camera } | null>(null);
   const layers = { ...internalLayers, ...layerOverrides, debris: layerOverrides?.debris ?? layerOverrides?.hotspots ?? internalLayers.debris };
   const validVessels = useMemo(() => vessels.filter(validPosition).slice(0, 700), [vessels]);
+  const vesselPositionsKey = validVessels.map(v => `${v.id}:${v.latitude}:${v.longitude}:${v.heading ?? ""}`).join("|");
+  const followingVessel = validVessels.find(v => v.id === following);
   const validPorts = useMemo(() => ports.filter(validPosition), [ports]);
   const validHotspots = useMemo(() => hotspots.filter(validPosition).slice(0, 250), [hotspots]);
-  const validMarine = useMemo(() => marine.filter(p => validPosition(p) && p.current_velocity != null && p.current_direction != null && Number.isFinite(p.current_velocity) && Number.isFinite(p.current_direction)).slice(0, 200), [marine]);
+  const validMarine = useMemo(() => {
+    const unique = new Map<string, typeof marine[number]>();
+    marine.forEach(sample => {
+      if (!validPosition(sample) || sample.current_velocity == null || sample.current_direction == null || !Number.isFinite(sample.current_velocity) || !Number.isFinite(sample.current_direction) || sample.current_velocity < 0) return;
+      const key = `${sample.latitude.toFixed(6)},${sample.longitude.toFixed(6)}`;
+      const previous = unique.get(key);
+      if (!previous || Date.parse(sample.timestamp || "") > Date.parse(previous.timestamp || "")) unique.set(key, sample);
+    });
+    return [...unique.values()];
+  }, [marine]);
   const collectorRoutesKey = collectors.map(c => `${c.id}:${JSON.stringify(c.route || [])}`).join("|");
   const landPath = useMemo(() => {
     try { return (geography || localGeography) ? geometryPath((geography || localGeography)!) : ""; }
     catch { return ""; }
   }, [geography, localGeography]);
+  const regionBounds = useMemo(() => geographyBounds(geography || localGeography), [geography, localGeography]);
+  const worldLandPath = useMemo(() => {
+    try { return (worldGeography || localWorldGeography) ? geometryPath((worldGeography || localWorldGeography)!) : ""; }
+    catch { return ""; }
+  }, [worldGeography, localWorldGeography]);
   const boundaryPaths = useMemo(() => {
     const features = (boundaries || localBoundaries)?.features || [];
     return features.flatMap((feature, index) => {
@@ -191,6 +231,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     const point = project(lat, lon); return `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`;
   }).join(" ");
   const inView = (p: Pixel, margin = 90) => p.x > -margin && p.x < dimensions.width + margin && p.y > -margin && p.y < dimensions.height + margin;
+  const visibleMarine = validMarine.filter(sample => inView(project(sample.latitude, sample.longitude), 50)).slice(0, 200);
 
   useEffect(() => {
     engineRef.current = engine;
@@ -236,6 +277,23 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   }, [geography]);
 
   useEffect(() => {
+    if (worldGeography) { setWorldStatus("loaded"); return; }
+    const controller = new AbortController();
+    (async () => {
+      for (const url of ["/api/map/land_world", "/data/land_world.geojson"]) {
+        try {
+          const response = await fetch(url, { signal: controller.signal });
+          if (!response.ok) continue;
+          const result = await response.json();
+          if (result.type === "FeatureCollection" && Array.isArray(result.features)) { setLocalWorldGeography(result); setWorldStatus("loaded"); return; }
+        } catch { if (controller.signal.aborted) return; }
+      }
+      setWorldStatus("unavailable");
+    })();
+    return () => controller.abort();
+  }, [worldGeography]);
+
+  useEffect(() => {
     const controller = new AbortController();
     const load = async (name: string, setter: (value: MapGeography) => void) => {
       for (const url of [`/api/map/${name}`, `/data/${name}.geojson`]) {
@@ -260,24 +318,47 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     }
   }, []);
 
-  const flyTo = useCallback((position: MapPosition, zoom = 7.5, duration = 1400) => {
+  const flyTo = useCallback((position: MapPosition, zoom = 7.5, duration = 1400, frameTarget = true) => {
     if (!validPosition(position)) return;
+    if (introTimer.current) { window.clearTimeout(introTimer.current); introTimer.current = null; }
     cancelAnimationFrame(cameraAnimation.current);
     const from = cameraRef.current;
+    const target = { ...position };
+    // Offset the camera so its subject lands in the visible chart between overlay panels.
+    if (frameTarget) {
+      const { left, right } = viewGeometryRef.current;
+      const world = worldPoint(position.longitude, position.latitude);
+      const centered = unproject(world.x - ((left - right) / 2) / Math.pow(2, zoom), world.y);
+      target.latitude = centered.latitude; target.longitude = centered.longitude;
+    }
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (threeMap.current && engineRef.current === "3d") {
-      threeMap.current.flyCameraTo?.({ endCamera: { center: { lat: position.latitude, lng: position.longitude, altitude: 0 }, range: 1800000 / Math.pow(2, zoom - 5), tilt: 45, heading: 0 }, durationMillis: reducedMotion ? 0 : duration });
+      threeMap.current.flyCameraTo?.({ endCamera: { center: { lat: target.latitude, lng: target.longitude, altitude: 0 }, range: 1800000 / Math.pow(2, zoom - 5), tilt: 45, heading: 0 }, durationMillis: reducedMotion ? 0 : duration });
     }
-    if (reducedMotion) { applyCamera({ ...position, zoom }); return; }
+    if (reducedMotion) { applyCamera({ ...target, zoom }); return; }
     const start = performance.now();
     const frame = (time: number) => {
       const t = clamp((time - start) / duration, 0, 1);
       const e = ease(t);
-      applyCamera({ latitude: from.latitude + (position.latitude - from.latitude) * e, longitude: from.longitude + (position.longitude - from.longitude) * e, zoom: from.zoom + (zoom - from.zoom) * e });
+      applyCamera({ latitude: from.latitude + (target.latitude - from.latitude) * e, longitude: from.longitude + (target.longitude - from.longitude) * e, zoom: from.zoom + (zoom - from.zoom) * e });
       if (t < 1) cameraAnimation.current = requestAnimationFrame(frame);
     };
     cameraAnimation.current = requestAnimationFrame(frame);
   }, [applyCamera]);
+
+  useEffect(() => {
+    if (!playIntro.current) return;
+    hasPlayedMapIntro = true;
+    introTimer.current = window.setTimeout(() => flyTo(DEFAULT_CAMERA, DEFAULT_CAMERA.zoom, 2400), 450);
+    return () => { if (introTimer.current) window.clearTimeout(introTimer.current); };
+  // Play the opening once per application session. A camera command cancels it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => onCameraChangeRef.current?.(camera), 160);
+    return () => window.clearTimeout(timer);
+  }, [camera.latitude, camera.longitude, camera.zoom]);
 
   const fitPoints = useCallback((points: MapPosition[]) => {
     const valid = points.filter(validPosition);
@@ -287,7 +368,8 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     const projected = valid.map(p => worldPoint(p.longitude, p.latitude));
     const spanX = Math.max(...projected.map(p => p.x)) - Math.min(...projected.map(p => p.x));
     const spanY = Math.max(...projected.map(p => p.y)) - Math.min(...projected.map(p => p.y));
-    const zoom = Math.min(Math.log2(Math.max(200, dimensions.width - 440) / Math.max(spanX, 0.1)), Math.log2(Math.max(200, dimensions.height - 240) / Math.max(spanY, 0.1)), 9);
+    const view = viewGeometryRef.current;
+    const zoom = Math.min(Math.log2(Math.max(160, dimensions.width - view.left - view.right - 130) / Math.max(spanX, 0.1)), Math.log2(Math.max(200, dimensions.height - 210) / Math.max(spanY, 0.1)), 9);
     flyTo({ latitude, longitude }, clamp(zoom, 2, 10));
   }, [dimensions, flyTo]);
 
@@ -322,8 +404,8 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     const next = collectors.filter(c => c.route?.length).map(c => ({ id: c.id, coordinates: c.route! }));
     const retired = previousCollectorRoutes.current.filter(previous => !next.some(current => current.id === previous.id && JSON.stringify(current.coordinates) === JSON.stringify(previous.coordinates)));
     previousCollectorRoutes.current = next;
-    if (!retired.length) return;
     setRetiredRoutes(retired);
+    if (!retired.length) return;
     const timer = window.setTimeout(() => setRetiredRoutes([]), 5500);
     return () => window.clearTimeout(timer);
   // Progress changes do not change a collector's assigned route.
@@ -334,10 +416,11 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   useEffect(() => {
     const previous = positionsRef.current;
     const start = performance.now();
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let animation = 0;
     let lastPaint = 0;
     const frame = (time: number) => {
-      const progress = clamp((time - start) / 1800, 0, 1);
+      const progress = reducedMotion ? 1 : clamp((time - start) / 1800, 0, 1);
       if (time - lastPaint > 40 || progress === 1) {
         const next: typeof positions = {};
         validVessels.forEach(vessel => {
@@ -354,13 +437,16 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     };
     animation = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(animation);
-  }, [validVessels]);
+  // Identity and metadata refreshes do not restart motion for unchanged positions.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vesselPositionsKey]);
 
   useEffect(() => {
     if (!following) return;
-    const vessel = validVessels.find(v => v.id === following);
-    if (vessel) flyTo(vessel, Math.max(cameraRef.current.zoom, 7.8), 1700);
-  }, [following, validVessels, flyTo]);
+    if (followingVessel) flyTo(followingVessel, Math.max(cameraRef.current.zoom, 7.8), 1700);
+  // Follow only changes to this vessel, rather than unrelated AIS packets.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [following, followingVessel?.latitude, followingVessel?.longitude, flyTo]);
 
   useEffect(() => {
     if (!googleMapsKey || !googleContainer.current) return;
@@ -369,6 +455,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     let tileListener: MapListener | undefined;
     let observer: MutationObserver | undefined;
     let failed = false;
+    let googleReady = false;
     const scope = window as MapWindow;
     const previousAuthFailure = scope.gm_authFailure;
     const fallback = () => {
@@ -392,6 +479,11 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
       mapInstance.current = map;
       tileListener = map.addListener("tilesloaded", () => {
         if (active && !failed && engineRef.current !== "3d" && !googleContainer.current?.querySelector(".gm-err-container")) {
+          if (!googleReady) {
+            googleReady = true;
+            const current = cameraRef.current;
+            map.moveCamera({ center: { lat: current.latitude, lng: current.longitude }, zoom: current.zoom });
+          }
           setEngine("google"); engineRef.current = "google"; setGoogleStatus("Google Maps · connected");
         }
       });
@@ -435,6 +527,12 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
         const timeout = window.setTimeout(() => { if (!initialised) fallback(); }, 18000);
         map.addEventListener("gmp-steadychange", () => { initialised = true; window.clearTimeout(timeout); });
         map.addEventListener("gmp-error", () => { window.clearTimeout(timeout); fallback(); });
+        const updateCamera = () => {
+          if (engineRef.current !== "3d" || !map.center) return;
+          applyCamera({ latitude: map.center.lat, longitude: map.center.lng, zoom: Math.log2(1800000 / Math.max(map.range, 1)) + 5 }, false);
+        };
+        map.addEventListener("gmp-centerchange", updateCamera);
+        map.addEventListener("gmp-rangechange", updateCamera);
         threeContainer.current.replaceChildren(map);
         threeMap.current = map;
       }
@@ -472,7 +570,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
 
   const zoomBy = useCallback((delta: number) => {
     setFollowing(null);
-    flyTo(cameraRef.current, cameraRef.current.zoom + delta, 400);
+    flyTo(cameraRef.current, cameraRef.current.zoom + delta, 400, false);
   }, [flyTo]);
 
   useEffect(() => {
@@ -492,6 +590,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
 
   const pointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if ((engine !== "offline" && !chartMode) || (event.target as Element).closest("[data-map-item], button, .ocean-layer-menu")) return;
+    if (introTimer.current) { window.clearTimeout(introTimer.current); introTimer.current = null; }
     cancelAnimationFrame(cameraAnimation.current);
     setFollowing(null);
     drag.current = { x: event.clientX, y: event.clientY, camera: cameraRef.current };
@@ -514,6 +613,10 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   const activeVessel = validVessels.find(v => v.id === hovered) || selectedVessel;
   const activePosition = activeVessel && project((positions[activeVessel.id] || activeVessel).latitude, (positions[activeVessel.id] || activeVessel).longitude);
   const showOffline = engine === "offline" || chartMode;
+  const viewportNorthWest = unproject(center.x - dimensions.width / 2 / worldScale, center.y - dimensions.height / 2 / worldScale);
+  const viewportSouthEast = unproject(center.x + dimensions.width / 2 / worldScale, center.y + dimensions.height / 2 / worldScale);
+  const regionCoversViewport = regionBounds && regionBounds.west <= viewportNorthWest.longitude && regionBounds.east >= viewportSouthEast.longitude && regionBounds.north >= viewportNorthWest.latitude && regionBounds.south <= viewportSouthEast.latitude;
+  const regionCoversCenter = regionBounds && regionBounds.west <= camera.longitude && regionBounds.east >= camera.longitude && regionBounds.south <= camera.latitude && regionBounds.north >= camera.latitude;
   const coordinates = cursorCoordinates || camera;
   const kmPerPixel = Math.cos(camera.latitude * Math.PI / 180) * 40075.017 / (256 * worldScale);
   const scaleKm = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(value => value / kmPerPixel >= 55) || 1000;
@@ -530,6 +633,9 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     { name: "Karwar", latitude: 14.8136, longitude: 74.1297, size: 11, spacing: 0.2 },
     { name: "Udupi", latitude: 13.3409, longitude: 74.7421, size: 11, spacing: 0.2 },
     { name: "LAKSHADWEEP", latitude: 10.55, longitude: 72.3, size: 10, spacing: 3 },
+    { name: "GULF OF MEXICO", latitude: 25.8, longitude: -90.4, size: 16, spacing: 5, ocean: true },
+    { name: "NORTH ATLANTIC OCEAN", latitude: 33, longitude: -65, size: 17, spacing: 5, ocean: true },
+    { name: "UNITED STATES", latitude: 37.8, longitude: -98, size: 15, spacing: 5 },
   ];
 
   return <div ref={rootRef} className={`ocean-map ${className}`} data-engine={showOffline ? "offline" : engine}
@@ -552,6 +658,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
 
       {showOffline && <>
         <rect width={dimensions.width} height={dimensions.height} fill={`url(#${uid}-ocean)`} />
+        {worldLandPath && !regionCoversViewport && <g transform={`translate(${dimensions.width / 2 - center.x * worldScale},${dimensions.height / 2 - center.y * worldScale}) scale(${worldScale})`}><path d={worldLandPath} fill={`url(#${uid}-land)`} stroke="#65847a" strokeWidth="0.8" fillRule="evenodd" vectorEffect="non-scaling-stroke" opacity="0.92" /></g>}
         {landPath && <g transform={`translate(${dimensions.width / 2 - center.x * worldScale},${dimensions.height / 2 - center.y * worldScale}) scale(${worldScale})`}>
           <path d={landPath} fill="none" stroke="#2b6168" strokeWidth="13" opacity="0.09" vectorEffect="non-scaling-stroke" />
           <path d={landPath} fill="none" stroke="#3b6870" strokeWidth="6" opacity="0.1" vectorEffect="non-scaling-stroke" />
@@ -571,7 +678,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
 
       {showOffline && placeLabels.map(place => { const p = project(place.latitude, place.longitude); return inView(p) && <text key={place.name} x={p.x} y={p.y} textAnchor="middle" fill={place.ocean ? "#63848f" : "#87988c"} fontSize={place.size} letterSpacing={place.spacing} opacity={place.ocean ? 0.5 : 0.65} fontWeight="400" style={{ pointerEvents: "none" }}>{place.name}</text>; })}
 
-      {layers.currents && <g className="ocean-currents">{validMarine.map((sample, index) => {
+      {layers.currents && <g className="ocean-currents">{visibleMarine.map((sample, index) => {
         const p = project(sample.latitude, sample.longitude);
         if (!inView(p, 50)) return null;
         const speed = sample.current_velocity!;
@@ -696,6 +803,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     </svg>}
 
     <div className="ocean-vignette" />
+    {showOffline && !worldLandPath && regionBounds && !regionCoversCenter && <div className="ocean-context-note">{worldStatus === "loading" ? "Loading global geographic context…" : "Global coastline unavailable · vessel coordinates remain visible"}</div>}
     <div className="ocean-compass" aria-label="Map orientation north"><span>N</span><svg width="27" height="37" viewBox="0 0 27 37" aria-hidden="true"><path d="m13.5 4 7 25-7-6-7 6z" fill="#a8c4b7" /><path d="m13.5 4 7 25-7-6z" fill="#506862" /></svg></div>
 
     <div className="ocean-map-controls">
@@ -737,17 +845,18 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
       .ocean-port,.ocean-vessel,.ocean-hotspot{pointer-events:all;cursor:pointer;outline:none}.ocean-port:focus circle,.ocean-vessel:focus>circle,.ocean-hotspot:focus>circle{stroke:#fff;stroke-width:2px}.ocean-port:hover text{fill:#fff}.ocean-vessel-label{pointer-events:none}
       .ocean-hotspot-pulse{animation:ocean-pulse 4s ease-in-out infinite;transform-origin:center}.ocean-route-draw{stroke-dasharray:1;stroke-dashoffset:0;animation:ocean-draw 2.8s cubic-bezier(.2,.7,.2,1)}.ocean-route-flow{animation:ocean-flow 3s linear infinite}.ocean-retired-route{animation:ocean-retire 5.5s ease-out forwards}
       .ocean-vignette{position:absolute;inset:0;box-shadow:inset 0 0 180px 28px rgba(4,12,19,.23);pointer-events:none}
+      .ocean-context-note{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);padding:9px 13px;background:#11262be8;border:1px solid #3d5559;border-radius:6px;color:#a0b8b4;font-size:10px;line-height:1.5;pointer-events:none;max-width:60%;text-align:center}
       .ocean-compass{position:absolute;right:calc(var(--ocean-right-inset,0px) + 25px);top:29px;display:flex;flex-direction:column;align-items:center;gap:0;pointer-events:none}.ocean-compass span{font-size:9px;letter-spacing:1px;color:#a5b8af}
       .ocean-map-controls{position:absolute;right:calc(var(--ocean-right-inset,0px) + 22px);top:113px;background:rgba(12,28,37,.92);border:1px solid #2b4147;border-radius:9px;display:flex;flex-direction:column;padding:4px;box-shadow:0 8px 24px #06101844;backdrop-filter:blur(16px)}
       .ocean-map-controls button{border:0;background:transparent;color:#9eb4b2;width:33px;height:36px;display:grid;place-items:center;cursor:pointer;border-radius:5px}.ocean-map-controls button:hover{background:#243c42;color:#e0ece5}.ocean-map-controls span{height:1px;background:#2a3f46;margin:3px 6px}
       .ocean-layer-menu{position:absolute;right:calc(var(--ocean-right-inset,0px) + 72px);top:110px;width:242px;padding:17px 18px;border:1px solid #2c484d;border-radius:12px;background:#10222eeF;box-shadow:0 14px 50px #030d1aaa;backdrop-filter:blur(20px);z-index:3}.ocean-layer-menu strong{font-size:12px;font-weight:600;display:block;margin-bottom:13px;color:#d2e3da}.ocean-layer-menu label{font-size:11px;display:flex;align-items:center;justify-content:space-between;padding:8px 0;color:#a9beb8;gap:10px}.ocean-layer-menu input{accent-color:#61d8b4}.ocean-layer-menu p{color:#6e9295;font-size:10px;line-height:1.6;border-top:1px solid #2b4147;margin:12px 0 0;padding-top:12px}
-      .ocean-following{position:absolute;left:50%;top:30px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:9px 12px;background:#142d35ed;border:1px solid #3a615d;color:#bfd7ca;border-radius:7px;font-size:10px;cursor:pointer;max-width:calc(100% - 180px);white-space:nowrap}.ocean-following i{width:5px;height:5px;background:#65d2ad;border-radius:50%}.ocean-following span{margin-left:9px;font-size:17px;color:#77948e}
+      .ocean-following{position:absolute;left:50%;top:68px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:9px 12px;background:#142d35ed;border:1px solid #3a615d;color:#bfd7ca;border-radius:7px;font-size:10px;cursor:pointer;max-width:calc(100% - 180px);white-space:nowrap}.ocean-following i{width:5px;height:5px;background:#65d2ad;border-radius:50%}.ocean-following span{margin-left:9px;font-size:17px;color:#77948e}
       .ocean-legend{position:absolute;left:calc(var(--ocean-left-inset,0px) + 25px);right:calc(var(--ocean-right-inset,0px) + 20px);bottom:72px;display:flex;align-items:center;gap:19px;pointer-events:none;flex-wrap:wrap}.ocean-legend>span{font-size:10px;color:#8aa5a6;display:flex;align-items:center;gap:6px}.ocean-legend i{width:5px;height:5px;border-radius:50%;display:inline-block}.ocean-legend .ocean-forecast-label{font-size:8px;letter-spacing:1.1px;color:#547b80;padding-left:2px}
       .ocean-map-bottom{position:absolute;bottom:32px;left:var(--ocean-left-inset,0px);right:var(--ocean-right-inset,0px);min-height:32px;display:flex;align-items:center;justify-content:space-between;padding:8px 22px;gap:12px;pointer-events:none}.ocean-map-attribution{display:flex;align-items:center;gap:7px;font-size:8px;letter-spacing:1px;color:#66888d;line-height:1.5}.ocean-source-dot{width:4px;height:4px;background:#648a88;border-radius:50%;flex-shrink:0}.ocean-coordinate{margin-left:18px;color:#648186;font-size:8px;letter-spacing:.5px;font-family:monospace}.ocean-map-bottom-right{display:flex;gap:7px;align-items:center;pointer-events:all}.ocean-map-bottom-right button{font-size:9px;border:1px solid #314950;background:#122733;border-radius:5px;padding:6px 9px;color:#91aca9;cursor:pointer}.ocean-map-bottom-right button.active{color:#80dcb8;border-color:#447e6c}.ocean-map-bottom-right button:disabled{opacity:.45;cursor:default}.ocean-scale{display:flex;flex-direction:column;align-items:center;gap:3px;margin-right:11px;color:#6c8b8f}.ocean-scale span{height:5px;border:1px solid #66868b;border-top:0;max-width:150px}.ocean-scale small{font-size:8px;white-space:nowrap}.ocean-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
       @keyframes ocean-pulse{0%,100%{opacity:.2;transform:scale(.82)}50%{opacity:.7;transform:scale(1.12)}}@keyframes ocean-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}@keyframes ocean-flow{to{stroke-dashoffset:-56}}@keyframes ocean-retire{from{opacity:.8}to{opacity:0}}
       @media(max-width:1450px){.ocean-coordinate{display:none}.ocean-legend .ocean-forecast-label{display:none}.ocean-map-attribution{font-size:7px;letter-spacing:.6px}}
       @media(max-width:900px){.ocean-legend{gap:12px;left:calc(var(--ocean-left-inset,0px) + 15px)}.ocean-map-bottom{padding:8px 14px}.ocean-compass{right:calc(var(--ocean-right-inset,0px) + 20px)}.ocean-map-controls{right:calc(var(--ocean-right-inset,0px) + 15px)}}
-      @media(prefers-reduced-motion:reduce){.ocean-hotspot-pulse,.ocean-route-draw,.ocean-route-flow{animation:none}}
+      @media(prefers-reduced-motion:reduce){.ocean-hotspot-pulse,.ocean-route-draw,.ocean-route-flow{animation:none}.ocean-currents circle{display:none}}
     `}</style>
   </div>;
 });

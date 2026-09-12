@@ -40,6 +40,7 @@ export interface MapRoute {
 
 /** Velocities must be metres/second; directions point TOWARD clockwise from north. */
 export interface MapMarineSample extends MapPosition {
+  timestamp?: string;
   current_velocity?: number | null;
   current_direction?: number | null;
   wave_height?: number | null;
@@ -95,9 +96,11 @@ export interface OceanMapProps {
   onVesselSelect?: (vessel: MapVessel) => void;
   onHotspotSelect?: (hotspot: MapHotspot) => void;
   onPortSelect?: (port: MapPort) => void;
+  onCameraChange?: (camera: MapFocus) => void;
   focus?: MapFocus | null;
   layers?: Partial<MapLayers>;
   geography?: MapGeography | null;
+  worldGeography?: MapGeography | null;
   boundaries?: MapGeography | null;
   protectedAreas?: MapGeography | null;
   /** Normally measured from surrounding panels; override for a different host layout. */
@@ -105,6 +108,7 @@ export interface OceanMapProps {
   className?: string;
   /** Suppress built-in bottom-left legend if the surrounding application supplies one. */
   hideLegend?: boolean;
+  cinematicIntro?: boolean;
 }
 
 export interface OceanMapHandle {

@@ -1,4 +1,4 @@
-generated_at: '2026-09-12T08:43:25.716261+00:00'
+generated_at: '2026-09-12T13:35:08.452084+00:00'
 region_bbox:
 - 55
 - -5
@@ -20,8 +20,8 @@ datasets:
   - data/raw/ne_10m_ports.zip
   processed_file: data/processed/ports.json
   refresh_strategy: Run python scripts/acquire_data.py --all --refresh
-  status: downloaded
-  records: 0
+  status: ready
+  records: 1081
   merged_records: 3744
 - id: land
   name: Natural Earth 1:10 million land

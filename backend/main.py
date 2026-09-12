@@ -14,13 +14,14 @@ from backend.services.data_catalog import records,catalog,vessels as historical_
 from backend.services.geospatial import haversine
 from backend.services.route_optimizer import optimize_route,RouteUnavailable
 from backend.services.websocket_manager import manager
-from backend.services.replay_engine import replay_recording
+from backend.services.replay_engine import ReplayController,ReplayUnavailable
 from backend.agents.orchestrator import Workflow,agent_states,STATE
 from backend.agents.dark_vessel import investigate
 from backend.agents.debris_intelligence import cluster_debris
 from backend.agents.debris_coordinator import cleanup_plan
 from backend.agents.reporter import render_report
 from backend.models.behaviour_model import behaviour_features,parse_time
+from backend.services.command_regions import filter_named_region
 from backend.providers.aisstream import AISStreamProvider
 from backend.providers.global_fishing_watch import GlobalFishingWatchProvider
 from backend.providers.marine_weather import OpenMeteoProvider
@@ -29,6 +30,7 @@ from backend.providers.llm import GroqProvider
 logger=logging.getLogger(__name__)
 storage.initialize()
 ais=AISStreamProvider(); gfw=GlobalFishingWatchProvider(); marine_provider=OpenMeteoProvider(); llm=GroqProvider()
+replay=ReplayController(manager)
 background_tasks=set()
 last_analysis={}
 last_broadcast={}
@@ -58,6 +60,7 @@ async def lifespan(app):
     if config.LIVE_ENABLED and config.AISSTREAM_API_KEY:track_task(ais.run(on_ais))
     track_task(verify_providers())
     yield
+    await replay.stop()
     for task in list(background_tasks):task.cancel()
     await asyncio.gather(*background_tasks,return_exceptions=True)
 
@@ -85,14 +88,27 @@ def providers():
     hist=historical_vessels();marine=records('marine');debris=records('debris');ports=records('ports')
     entries=catalog();entries=entries if isinstance(entries,list) else []
     boundary_count=sum(len(read_json(name,{}).get('features',[])) for name in ('boundaries.geojson','mpa.geojson') if isinstance(read_json(name,{}),dict))
+    historical_ais=next((e for e in entries if e.get('id')=='historical_ais'),{})
+    noaa_vessels=[v for v in hist if 'noaa' in str(v.get('source','')).lower()]
+    gfw_vessels=[v for v in hist if 'global fishing watch' in str(v.get('source','')).lower() or str(v.get('source','')).lower()=='gfw']
+    bathymetry=records('bathymetry');weather=records('weather')
     items=[
         {'id':'google_maps','name':'Google Maps','status':'CONFIGURED' if config.GOOGLE_MAPS_API_KEY else 'MISSING KEY','records':None,'provenance':'MAP PROVIDER','detail':'Browser map availability is verified by the map component.'},
         {'id':'aisstream','name':'AISStream',**ais.state,'records':storage.ais_count(),'provenance':'LIVE' if ais.state['status']=='LIVE' else 'OFFLINE CACHE'},
-        {'id':'gfw','name':'Global Fishing Watch',**gfw.state,'records':len(hist),'provenance':'HISTORICAL'},
+        {'id':'gfw','name':'Global Fishing Watch',**gfw.state,'records':len(gfw_vessels),'provenance':'HISTORICAL'},
+        {'id':'noaa_ais','name':'NOAA Historical AIS','status':'OFFLINE REAL DATASET' if noaa_vessels else 'UNAVAILABLE',
+            'records':int(historical_ais.get('records',0)) if noaa_vessels else 0,'provenance':'HISTORICAL REAL DATA',
+            'replay_vessels':len(noaa_vessels),'replay_observations':sum(len(v.get('track',[])) for v in noaa_vessels),
+            'detail':'US coastal AIS archive; global demonstration context, not Indian vessel positions. Raw observations and replay subset are counted separately.',
+            'last_refresh':historical_ais.get('date_downloaded')},
+        {'id':'vessel_identity','name':'Vessel Identity Cache','status':'LOCAL CACHE' if hist else 'UNAVAILABLE','records':len(hist),
+            'provenance':'HISTORICAL REAL DATA','detail':'Distinct curated vessel identities loaded by the app, with their original source provider.'},
         {'id':'marine','name':'Open-Meteo Marine','status':'MODEL FORECAST' if marine else 'UNAVAILABLE','records':len(marine),'provenance':'MODEL FORECAST','detail':'Cached numerical marine forecast, not in-situ observation.','last_refresh':max([str(m.get('timestamp','')) for m in marine] or [''])},
         {'id':'debris','name':'Marine Debris Observations','status':'OFFLINE REAL DATASET' if debris else 'UNAVAILABLE','records':len(debris),'provenance':'HISTORICAL REAL DATA','detail':'Real sampled debris observations; historical concentration is not present-day recoverable mass.'},
         {'id':'ports','name':'World Ports','status':'LOCAL CACHE' if ports else 'UNAVAILABLE','records':len(ports),'provenance':'REAL DATA','detail':'Downloaded real port coordinates and identities.'},
         {'id':'boundaries','name':'Marine Boundaries','status':'LOCAL CACHE' if boundary_count else 'UNAVAILABLE','records':boundary_count,'provenance':'REAL DATA','detail':'Downloaded polygons; boundary legal interpretation requires verification.'},
+        {'id':'bathymetry','name':'NOAA ETOPO Bathymetry','status':'LOCAL CACHE' if bathymetry else 'UNAVAILABLE','records':len(bathymetry),'provenance':'REAL DATA','detail':'Subsampled global relief data for ocean context; not under-keel clearance or navigation.'},
+        {'id':'weather','name':'Open-Meteo Coastal Weather','status':'MODEL FORECAST' if weather else 'UNAVAILABLE','records':len(weather),'provenance':'MODEL FORECAST','detail':'Cached coastal atmosphere model forecasts.'},
         {'id':'llm','name':'Groq Intelligence',**llm.state,'records':None,'provenance':'AI EXPLANATION'},
         {'id':'database','name':'Mission / AIS Store','status':'SQLITE READY','records':storage.ais_count(),'provenance':'LOCAL PERSISTENCE','detail':'SQLite WAL durable fallback. Optional PostGIS is provided by Docker Compose.'},
     ]
@@ -111,15 +127,12 @@ def public_config():return {'google_maps_key':config.GOOGLE_MAPS_API_KEY}
 
 @app.get('/api/bootstrap')
 def bootstrap():
-    v=get_vessels();p=records('ports');d=records('debris');h=get_hotspots();missions=storage.recent_missions()
-    routes=[m for m in missions if m['type']=='route'];cleanups=[m for m in missions if m['type']=='cleanup'];investigations=[m for m in missions if m['type']=='investigation']
+    v=get_vessels();p=records('ports');d=records('debris');h=get_hotspots()
     return {'providers':providers(),'stats':{'live_vessels':sum(x['provenance']=='LIVE' for x in v),'vessels':len(v),'ports':len(p),
-        'debris_observations':len(d),'hotspots':len(h),'investigations':len(investigations),
-        'fuel_saved_t':round(sum(m['savings']['fuel_t'] for m in routes),3),'co2_avoided_t':round(sum(m['savings']['co2_t'] for m in routes),3),
-        'active_collectors':len(cleanups[0]['assignments']) if cleanups else 0,'recorded_ais_observations':storage.ais_count()},
+        'debris_observations':len(d),'hotspots':len(h),**storage.impact_summary(),'recorded_ais_observations':storage.ais_count()},
         'ports':p,'vessels':v[:1000],'debris':d[:2500],'hotspots':h,'marine':records('marine'),'agents':agent_states(),
         'scenarios':{'routes':route_scenarios(p),'investigations':[x['id'] for x in v[:3]],'historical_investigations':[x['id'] for x in historical_vessels()[:3]]},
-        'recent_missions':[{'id':m['id'],'type':m['type'],'created_at':m.get('created_at'),'report_url':m.get('report_url')} for m in missions[:10]],
+        'recent_missions':storage.mission_summaries(10)['missions'],'replay':replay.snapshot(),
         'notice':'Decision-support prototype. Maritime activity classifications require human verification.'}
 
 @app.get('/api/providers')
@@ -145,6 +158,9 @@ def vessel_details(identifier:str):
 @app.get('/api/map/land')
 def land_geojson():return read_json('land.geojson',{'type':'FeatureCollection','features':[]})
 
+@app.get('/api/map/land_world')
+def world_land_geojson():return read_json('land_world.geojson',{'type':'FeatureCollection','features':[]})
+
 @app.get('/api/map/boundaries')
 def boundary_geojson():
     features=[]
@@ -161,7 +177,7 @@ def data_catalog():return catalog()
 
 @app.get('/api/data/{dataset}')
 def data_preview(dataset:str,limit:int=Query(20,ge=1,le=500),offset:int=Query(0,ge=0)):
-    allowed={'ports','vessels','debris','marine','bathymetry'}
+    allowed={'ports','vessels','debris','marine','bathymetry','weather'}
     if dataset not in allowed:raise HTTPException(404,'Unknown preview dataset.')
     rows=records(dataset)
     return {'dataset':dataset,'count':len(rows),'offset':offset,'rows':rows[offset:offset+limit]}
@@ -205,6 +221,11 @@ async def replan_endpoint(request:ReplanRequest):
     result=await asyncio.to_thread(cleanup_plan,records('debris'),records('marine'),previous.get('hours',6),len(previous.get('collectors',[])) or 3,previous,request.event,request.collector_id)
     return await persist_and_publish(result)
 
+@app.get('/api/missions')
+def missions_endpoint(limit:int=Query(30,ge=1,le=100),offset:int=Query(0,ge=0),type:str|None=None):
+    if type is not None and type not in ('route','investigation','cleanup'):raise HTTPException(422,'Unknown mission type.')
+    return storage.mission_summaries(limit,offset,type)
+
 @app.get('/api/missions/{identifier}')
 def mission_endpoint(identifier:str):
     result=storage.mission_by_id(identifier)
@@ -234,7 +255,19 @@ async def command_endpoint(request:CommandRequest):
         action='cleanup';mission=await cleanup_endpoint(CleanupRequest())
     elif any(word in message for word in ('suspicious','vessel','investigat','flagged','fishing')):
         action='investigation';available=get_vessels()
-        selected=next((v for v in available if str(v['id']).lower() in message or v['name'].lower() in message),available[0] if available else None)
+        region,available=filter_named_region(message,available)
+        if region and not available:
+            return {'message':f"No cached real vessel positions match {region['name']}. The downloaded NOAA replay cases are in United States waters and are not results for this region. Check the live AIS and GFW provider status for regional coverage.",
+                'action':action,'mission':None,'results':[],'region':region,'source':'DETERMINISTIC GEOGRAPHIC SEARCH'}
+        selected=next((v for v in available if str(v['id']).lower() in message or (len(v['name'])>2 and v['name'].lower() in message)),None)
+        if selected is None and any(word in message for word in ('suspicious','flagged')):
+            scored=[(behaviour_features(v.get('track',[])).get('anomaly_score',0),v) for v in available]
+            scored.sort(key=lambda pair:-pair[0])
+            if not scored or scored[0][0]<35:
+                return {'message':f"No available recorded trajectory exceeds the configured review threshold{' in '+region['name'] if region else ''}. This is not a claim that all vessels are safe; available AIS coverage and histories are incomplete.",
+                    'action':action,'mission':None,'results':[],'region':region,'source':'DETERMINISTIC EVIDENCE SCREENING'}
+            selected=scored[0][1]
+        if selected is None:selected=available[0] if available else None
         if selected:mission=await investigation_endpoint(selected['id'])
         else:return {'message':'No real vessel observations or historical cases are cached yet. AISStream is recording when available; GFW access status is visible in Data Explorer. No vessel evidence has been fabricated.','action':action,'source':'DETERMINISTIC COMMAND ROUTER'}
     context={'stats':bootstrap()['stats'],'providers':[{'name':p['name'],'status':p['status']} for p in providers()]}
@@ -247,10 +280,20 @@ async def command_endpoint(request:CommandRequest):
 
 @app.post('/api/replay/start')
 async def replay_endpoint(request:ReplayRequest):
-    count=storage.ais_count()
-    if not count:raise HTTPException(409,'No real AIS observations have been recorded. Replay cannot create artificial vessel positions.')
-    track_task(replay_recording(manager,request.speed,request.limit))
-    return {'status':'REPLAY STARTED','observations':min(count,request.limit),'provenance':'REAL DATA · DEMO REPLAY'}
+    try:return await replay.start(request.vessel_id,request.speed,request.limit)
+    except ReplayUnavailable as exc:raise HTTPException(409,str(exc)) from exc
+
+@app.get('/api/replay/status')
+async def replay_status_endpoint():return replay.snapshot()
+
+@app.post('/api/replay/pause')
+async def replay_pause_endpoint():return await replay.pause()
+
+@app.post('/api/replay/resume')
+async def replay_resume_endpoint():return await replay.resume()
+
+@app.post('/api/replay/stop')
+async def replay_stop_endpoint():return await replay.stop()
 
 @app.websocket('/ws')
 async def websocket_endpoint(websocket:WebSocket):

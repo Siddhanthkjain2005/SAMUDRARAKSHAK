@@ -1,0 +1,40 @@
+.replay-card{padding:13px;background:#102b364f;border:1px solid #456a7d80;border-radius:6px;margin:12px 0}
+.replay-card>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.replay-card>div:first-child>span:last-child{font:8px monospace;color:#85b4c8}
+.replay-card>b{display:block;font-size:11px;font-weight:500;margin:13px 0 8px}
+.replay-card>p{color:#88a6af;font-size:9px;line-height:1.7;margin-top:7px}
+.replay-card>small{font:8px/1.6 monospace;color:#a1c8d4;display:block;margin-top:8px}
+.replay-progress{height:3px;background:#284551;margin-top:13px;overflow:hidden;border-radius:3px}
+.replay-progress i{display:block;height:3px;background:#8ebbdc;transition:width .3s}
+.replay-controls{display:flex;gap:9px;margin-top:12px}
+.replay-controls button{display:flex;align-items:center;gap:5px;padding:7px 10px;font-size:9px;border:1px solid #426371;border-radius:4px;color:#a1c3cf;background:#1e3c4933}
+.geographic-note{font-size:9px;line-height:1.7;color:#b8ad94;border-left:2px solid #8c7c55;padding:7px 10px;margin:13px 0;background:#59472911}
+.observation-time{font:8px/1.8 monospace;color:#92acb2;margin:10px 0}
+.region-select{margin-top:12px;font-size:9px;height:35px;color:#8fb0b7}
+.track-profile{padding:14px 8px 8px;border:1px solid #324d5580;border-radius:5px;margin:16px 0;background:#0a1d2360}
+.track-profile .panel-heading{font-size:7px;letter-spacing:.7px;margin-bottom:10px}
+.track-profile>small{font-size:7px;color:#718f97;display:block;padding:0 4px 5px;line-height:1.6}
+.map-container .ocean-map-bottom{font-size:8px}
+.metric-stat{min-width:0}
+.panel-heading{line-height:1.5}
+.right-panel .feed-intro{margin-bottom:20px}
+.right-panel .feed-item{margin-bottom:18px}
+.environment-card .badge{font-size:6px}
+@media(min-width:1101px){
+ .main{padding-top:20px}.page-top{margin-bottom:18px}
+ .metrics-strip{padding:15px 0;margin-bottom:16px}
+ .operations{height:calc(100dvh - 396px);min-height:510px}
+ .agent-timeline{min-height:81px;margin-top:12px;padding:13px 17px}
+ .page-top h1{font-size:27px;line-height:1.1;margin:8px 0}
+ .page-top p{line-height:1.4}.metrics-strip .stat-value{line-height:1.1}
+ footer{height:35px}
+}
+@media(min-width:1700px){
+ .main{padding-top:23px}.page-top{margin-bottom:21px}
+ .metrics-strip{padding:17px 0;margin-bottom:18px}
+ .operations{height:calc(100dvh - 402px);min-height:520px}
+ .agent-timeline{min-height:85px}.left-panel h2{font-size:27px}
+ .left-panel .intro-copy{font-size:11px;margin-bottom:22px}
+ .mission-tile{padding:13px 11px}.coast-note{margin-top:23px}
+}
+@media(max-width:850px){.replay-card{margin-top:15px}.region-select{height:36px}.track-profile{margin-top:20px}}

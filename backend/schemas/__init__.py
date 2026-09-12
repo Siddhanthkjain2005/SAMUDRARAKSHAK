@@ -21,5 +21,6 @@ class CommandRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1500)
 
 class ReplayRequest(BaseModel):
+    vessel_id: str | None = Field(default=None, min_length=1, max_length=100)
     speed: float = Field(default=60, ge=1, le=3600)
     limit: int = Field(default=200, ge=1, le=2000)

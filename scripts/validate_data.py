@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import csv
 from pathlib import Path
 from acquire_data import ROOT,DATA,utc,write_json
 
@@ -28,7 +29,7 @@ def validate():
                 if unit=='km/h' and not math.isclose(row['current_speed_ms'],raw/3.6):
                     errors.append(f'{name}[{i}]: incorrect current unit conversion')
     from shapely.geometry import shape
-    for name in ['land','coastline','boundaries','mpa']:
+    for name in ['land','land_world','coastline','boundaries','mpa']:
         p=DATA/'processed'/(name+'.geojson')
         if not p.exists():
             errors.append(name+': missing geometry file');continue
@@ -43,6 +44,41 @@ def validate():
         if not p.exists() or hashlib.sha256(p.read_bytes()).hexdigest()!=entry['sha256']:
             errors.append(entry['file']+': checksum mismatch')
     catalog=json.loads((DATA/'catalog.json').read_text())
+    required={'name','provider','source_type','source','license','attribution','date_downloaded','coverage_dates',
+              'geographic_coverage','format','raw_file','processed_file','refresh_strategy'}
+    for dataset in catalog['datasets']:
+        missing=required-set(dataset)
+        if missing:errors.append(f"catalog {dataset.get('id')}: missing {', '.join(sorted(missing))}")
+    traceable=0
+    noaa_csv=DATA/'raw'/'noaa_ais_2024_01_01_prefix.csv'
+    if noaa_csv.exists():
+        source_points=set()
+        raw_records=0
+        with noaa_csv.open(newline='') as f:
+            for r in csv.DictReader(f):
+                raw_records+=1
+                try:source_points.add((r['mmsi'],r['base_date_time'].replace(' ','T')+'Z',float(r['latitude']),float(r['longitude'])))
+                except (ValueError,KeyError):pass
+        vessels=json.loads((DATA/'processed'/'vessels.json').read_text())
+        by_id={v['id']:v for v in vessels}
+        for v in vessels:
+            if v.get('source')!='NOAA MarineCadastre AIS':continue
+            timestamps=[p['timestamp'] for p in v.get('track',[])]
+            if timestamps!=sorted(timestamps):errors.append(f"{v['id']}: track is not time ordered")
+            for p in v.get('track',[]):
+                key=(v['mmsi'],p['timestamp'],p['latitude'],p['longitude'])
+                if key not in source_points:errors.append(f"{v['id']}: replay point does not match source CSV")
+                else:traceable+=1
+        cases=json.loads((DATA/'demo'/'historical_cases.json').read_text())
+        if len(cases)<3:errors.append('Fewer than three real historical demo cases')
+        for case in cases:
+            vessel=by_id.get(case['vessel_id'])
+            if not vessel:errors.append(f"{case['id']}: vessel absent from cache")
+            elif case.get('track_points')!=len(vessel.get('track',[])):errors.append(f"{case['id']}: track count mismatch")
+        counts['historical_ais_broadcast_rows']=raw_records
+        counts['historical_ais_replay_points']=traceable
+        counts['historical_demo_cases']=len(cases)
+        counts['vessel_identities']=len(json.loads((DATA/'processed'/'vessel_identity.json').read_text()))
     unavailable=[{'name':d.get('name',d.get('id')),'status':d.get('status'),'reason':d.get('error')} for d in catalog['datasets']
                  if d.get('status') not in ['ready','downloaded']]
     report={'validated_at':utc(),'ok':not errors,'counts':counts,'errors':errors,'unavailable':unavailable,

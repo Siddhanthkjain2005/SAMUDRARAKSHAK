@@ -45,9 +45,25 @@ def preprocess_geography():
     from shapely import make_valid
     from shapely.strtree import STRtree
     extent = box(*REGION)
+    world_file=DATA/'processed'/'land_world.geojson'
+    world_source=DATA/'raw'/'ne_10m_land.zip'
+    if world_source.exists() and (not world_file.exists() or world_file.stat().st_mtime<world_source.stat().st_mtime):
+        world=gpd.read_file(world_source)
+        features=[]
+        for i,geometry in enumerate(world.geometry):
+            simplified=geometry.simplify(.18,preserve_topology=True)
+            if not simplified.is_valid:simplified=make_valid(simplified)
+            features.append({'type':'Feature','properties':{'id':i,'source':'Natural Earth','provenance':'REAL DATA',
+                                                              'simplification_degrees':.18},'geometry':mapping(simplified)})
+        output('land_world.geojson',{'type':'FeatureCollection','features':features})
     for key in ['land','coastline']:
         path = DATA/'raw'/f'ne_10m_{key}.zip'
         if not path.exists():
+            continue
+        cached=DATA/'processed'/f'{key}.geojson'
+        full_cached=DATA/'processed'/f'{key}_full.geojson'
+        if cached.exists() and full_cached.exists() and min(cached.stat().st_mtime,full_cached.stat().st_mtime)>=path.stat().st_mtime:
+            register(key,records=len(load(cached,{})['features']),status='ready')
             continue
         gdf = gpd.read_file(path)
         features, full = [], []
@@ -84,8 +100,12 @@ def preprocess_geography():
             if p['name'] in aliases.values() and p.get('country_code')=='IND':
                 p['source_id']=p['id'];p['id']=p['name'].lower()
         output('ports.json',ports,'ports')
-    boundaries = []
-    for key in ['eez','territorial_sea','contiguous_zone','high_seas']:
+    boundary_keys=['eez','territorial_sea','contiguous_zone','high_seas']
+    boundary_raw=[DATA/'raw'/f'marineregions_{key}.geojson' for key in boundary_keys]
+    boundary_cache=DATA/'processed'/'boundaries.geojson'
+    fresh_cache=boundary_cache.exists() and all(not p.exists() or p.stat().st_mtime<=boundary_cache.stat().st_mtime for p in boundary_raw)
+    boundaries=load(boundary_cache,{}).get('features',[]) if fresh_cache else []
+    for key in ([] if fresh_cache else boundary_keys):
         data = load(DATA/'raw'/f'marineregions_{key}.geojson',{})
         count = 0
         for feature in data.get('features',[]):
@@ -101,6 +121,9 @@ def preprocess_geography():
         if data.get('features'):
             register(key,records=count,status='ready')
     output('boundaries.geojson',{'type':'FeatureCollection','features':boundaries})
+    for key in boundary_keys:
+        count=sum(f.get('properties',{}).get('kind')==key for f in boundaries)
+        if count:register(key,records=count,status='ready')
     mpa=load(DATA/'raw'/'india_mpa.geojson',{'type':'FeatureCollection','features':[]})
     output('mpa.geojson',mpa)
     if mpa.get('features'):
@@ -351,6 +374,7 @@ def preprocess():
             scenarios.append({'id':origin.lower()+'-'+dest.lower(),'origin':by_name[origin]['id'],'destination':by_name[dest]['id'],
                               'provenance':'COMPUTED SCENARIO · REAL PORT LOCATIONS','precomputed_route':None})
     write_json(DATA/'demo'/'route_scenarios.json',scenarios)
+    preprocess_debris_regions()
     # Record raw files copied before the manifest existed, without altering any original source bytes.
     for filename,url in [('ne_10m_ports.zip','https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_ports.zip')]:
         path=DATA/'raw'/filename
@@ -360,6 +384,32 @@ def preprocess():
                 record(path,url,'processed')
     build_catalog()
     print('Real observations, forecast units, and geometries normalized.',flush=True)
+
+
+def preprocess_debris_regions():
+    """Deterministic scene anchors; cluster count is computed, never a made-up metric."""
+    import numpy as np
+    from sklearn.cluster import DBSCAN
+    records=load(DATA/'processed'/'debris.json',[])
+    if not records:return
+    positions=np.radians([[r['latitude'],r['longitude']] for r in records])
+    labels=DBSCAN(eps=25/6371.0088,min_samples=3,metric='haversine').fit_predict(positions)
+    clusters=[]
+    for label in sorted(set(labels)):
+        if label<0:continue
+        rows=[records[i] for i,v in enumerate(labels) if v==label]
+        from collections import Counter
+        dominant=Counter((r.get('region') or 'Indian Ocean') for r in rows).most_common(1)[0][0]
+        centroid=np.degrees(positions[labels==label]).mean(axis=0)
+        clusters.append({'id':f'noaa-region-{int(label)}','name':dominant,'latitude':float(centroid[0]),
+                         'longitude':float(centroid[1]),'observation_count':len(rows),
+                         'observation_ids':[r['observation_id'] for r in rows],
+                         'source':'Computed from NOAA NCEI Marine Microplastics observations',
+                         'provenance':'COMPUTED · HISTORICAL REAL DATA',
+                         'method':{'algorithm':'DBSCAN','distance':'haversine','eps_km':25,'min_samples':3},
+                         'caveat':'Historical sampling cluster; not current cleanup mass. Counts are sample records, not plastic items.'})
+    clusters.sort(key=lambda r:(-r['observation_count'],r['id']))
+    write_json(DATA/'demo'/'debris_regions.json',clusters)
 
 
 if __name__=='__main__':
