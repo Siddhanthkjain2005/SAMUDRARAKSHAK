@@ -1,0 +1,479 @@
+generated_at: '2026-09-12T08:43:25.716261+00:00'
+region_bbox:
+- 55
+- -5
+- 100
+- 30
+datasets:
+- id: ports
+  name: Natural Earth world ports
+  provider: Natural Earth / High Seas
+  source_type: API or public bulk download
+  source: https://www.naturalearthdata.com/downloads/10m-cultural-vectors/ports/
+  license: Public domain
+  attribution: Natural Earth / High Seas
+  date_downloaded: '2026-09-12T06:21:23.430400+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: Shapefile ZIP
+  raw_file:
+  - data/raw/ne_10m_ports.zip
+  processed_file: data/processed/ports.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: downloaded
+  records: 0
+  merged_records: 3744
+- id: land
+  name: Natural Earth 1:10 million land
+  provider: Natural Earth
+  source_type: API or public bulk download
+  source: https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-land/
+  license: Public domain
+  attribution: Natural Earth
+  date_downloaded: '2026-09-12T06:21:27.103023+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: Shapefile ZIP
+  raw_file:
+  - data/raw/ne_10m_land.zip
+  processed_file: data/processed/land.geojson
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 8
+  caveat: 1:10 million cartographic resolution; not a navigation chart.
+- id: debris
+  name: 'NOAA NCEI Marine Microplastics: Indian Ocean subset'
+  provider: NOAA National Centers for Environmental Information
+  source_type: API or public bulk download
+  source: https://www.ncei.noaa.gov/products/microplastics
+  license: Public scientific data; retain original study DOI and NOAA attribution
+  attribution: NOAA National Centers for Environmental Information
+  date_downloaded: '2026-09-12T06:21:24.234065+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates:
+  - '2010-03-22T00:00:00+00:00'
+  - '2021-12-08T00:00:00+00:00'
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/noaa_microplastics_00000.geojson
+  processed_file: data/processed/debris.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 515
+  caveat: Microplastic concentration observations are not recoverable macro-debris
+    mass or fresh cleanup reports.
+- id: marine
+  name: Open-Meteo Marine regional forecast grid
+  provider: Open-Meteo; Météo-France / Copernicus Marine; ECMWF
+  source_type: API or public bulk download
+  source: https://open-meteo.com/en/docs/marine-weather-api
+  license: CC BY 4.0; free endpoint for non-commercial use
+  attribution: Open-Meteo; Météo-France / Copernicus Marine; ECMWF
+  date_downloaded: '2026-09-12T06:21:26.854844+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates:
+  - 2026-09-12T00:00
+  - 2026-09-14T23:00
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/marine_grid_000.json
+  - data/raw/marine_grid_020.json
+  - data/raw/marine_grid_040.json
+  - data/raw/marine_grid_060.json
+  processed_file: data/processed/marine.json
+  refresh_strategy: Refresh every 6 hours
+  status: ready
+  records: 74
+  provenance: MODEL FORECAST
+  forecast_hours: 5328
+- id: bathymetry
+  name: NOAA ETOPO1 Indian Ocean 15 arc-minute subset
+  provider: NOAA NGDC / NCEI via CoastWatch ERDDAP
+  source_type: API or public bulk download
+  source: https://www.ncei.noaa.gov/products/etopo-global-relief-model
+  license: Public domain; cite Amante and Eakins (2009), doi:10.7289/V5C8276M
+  attribution: NOAA NGDC / NCEI via CoastWatch ERDDAP
+  date_downloaded: '2026-09-12T06:26:58.571428+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/etopo_indian_ocean.csv
+  processed_file: data/processed/bathymetry.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 21901
+  caveat: Subsampled global relief model for context, unsuitable for navigation or
+    under-keel clearance.
+  last_attempt: '2026-09-12T06:26:16.819835+00:00'
+- id: debris_tracker
+  name: Marine Debris Tracker exports
+  provider: Marine Debris Tracker
+  source_type: API or public bulk download
+  source: https://debristracker.org/data/
+  license: Dataset-specific export license and contributor terms
+  attribution: Marine Debris Tracker
+  date_downloaded: '2026-09-12T06:21:24.245640+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file: []
+  processed_file: data/processed/debris_tracker.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: manual_download_required
+  records: 0
+  expected_filename: data/raw/debris_tracker.csv
+  error: Export requires source list selection through the provider interface; import
+    supported by preprocessing.
+- id: gfw_identity
+  name: Global Fishing Watch vessel identity
+  provider: Global Fishing Watch
+  source_type: Authenticated API
+  source: https://gateway.api.globalfishingwatch.org/v3
+  license: GFW API terms / dataset license
+  attribution: Global Fishing Watch
+  date_downloaded: null
+  geographic_coverage: India / Arabian Sea
+  coverage_dates: null
+  format: JSON
+  raw_file: []
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
+    scripts/acquire_gfw.py
+  status: credentials_rejected
+  records: 0
+  error: HTTP 401 invalid token
+  manual_download: Use https://globalfishingwatch.org/data-download/ under its account
+    and license terms. No authenticated endpoint is bypassed.
+- id: weather
+  name: Open-Meteo coastal weather forecast
+  provider: Open-Meteo and its weather-model providers
+  source_type: API or public bulk download
+  source: https://open-meteo.com/en/docs
+  license: CC BY 4.0; free endpoint for non-commercial use
+  attribution: Open-Meteo and its weather-model providers
+  date_downloaded: '2026-09-12T06:21:27.601646+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/coastal_weather.json
+  processed_file: data/processed/weather.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 6
+  provenance: MODEL FORECAST
+- id: coastline
+  name: Natural Earth 1:10 million coastline
+  provider: Natural Earth
+  source_type: API or public bulk download
+  source: https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-coastline/
+  license: Public domain
+  attribution: Natural Earth
+  date_downloaded: '2026-09-12T06:21:30.289516+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: Shapefile ZIP
+  raw_file:
+  - data/raw/ne_10m_coastline.zip
+  processed_file: data/processed/coastline.geojson
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 340
+  caveat: 1:10 million cartographic resolution; not a navigation chart.
+- id: copernicus
+  name: Copernicus Marine enhanced ocean data
+  provider: Copernicus Marine Service
+  source_type: API or public bulk download
+  source: https://data.marine.copernicus.eu/
+  license: Copernicus Marine product license
+  attribution: Copernicus Marine Service
+  date_downloaded: '2026-09-12T06:21:27.605711+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file: []
+  processed_file: data/processed/copernicus.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: credentials_required
+  records: 0
+  error: Optional service credentials are not configured; Copernicus-derived fields
+    remain available through Open-Meteo.
+- id: eez
+  name: Marine Regions eez
+  provider: Flanders Marine Institute (VLIZ) / Marine Regions
+  source_type: API or public bulk download
+  source: https://www.marineregions.org/downloads.php
+  license: CC BY 4.0; consult the dataset citation and disclaimer
+  attribution: Flanders Marine Institute (VLIZ) / Marine Regions
+  date_downloaded: '2026-09-12T06:22:15.772660+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/marineregions_eez.geojson
+  processed_file: data/processed/boundaries.geojson
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 17
+  caveat: Scientific boundary context, not a definitive statement of legal jurisdiction.
+- id: territorial_sea
+  name: Marine Regions territorial sea
+  provider: Flanders Marine Institute (VLIZ) / Marine Regions
+  source_type: API or public bulk download
+  source: https://www.marineregions.org/downloads.php
+  license: CC BY 4.0; consult the dataset citation and disclaimer
+  attribution: Flanders Marine Institute (VLIZ) / Marine Regions
+  date_downloaded: '2026-09-12T06:22:18.978497+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/marineregions_territorial_sea.geojson
+  processed_file: data/processed/boundaries.geojson
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 15
+  caveat: Scientific boundary context, not a definitive statement of legal jurisdiction.
+- id: contiguous_zone
+  name: Marine Regions contiguous zone
+  provider: Flanders Marine Institute (VLIZ) / Marine Regions
+  source_type: API or public bulk download
+  source: https://www.marineregions.org/downloads.php
+  license: CC BY 4.0; consult the dataset citation and disclaimer
+  attribution: Flanders Marine Institute (VLIZ) / Marine Regions
+  date_downloaded: '2026-09-12T06:22:22.329308+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/marineregions_contiguous_zone.geojson
+  processed_file: data/processed/boundaries.geojson
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 15
+  caveat: Scientific boundary context, not a definitive statement of legal jurisdiction.
+- id: high_seas
+  name: Marine Regions high seas
+  provider: Flanders Marine Institute (VLIZ) / Marine Regions
+  source_type: API or public bulk download
+  source: https://www.marineregions.org/downloads.php
+  license: CC BY 4.0; consult the dataset citation and disclaimer
+  attribution: Flanders Marine Institute (VLIZ) / Marine Regions
+  date_downloaded: '2026-09-12T06:22:25.954302+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/marineregions_high_seas.geojson
+  processed_file: data/processed/boundaries.geojson
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 1
+  caveat: Scientific boundary context, not a definitive statement of legal jurisdiction.
+- id: mpa
+  name: World Database on Protected Areas marine polygons
+  provider: UNEP-WCMC and IUCN / Protected Planet
+  source_type: API or public bulk download
+  source: https://www.protectedplanet.net/country/IND
+  license: 'Protected Planet terms: https://www.protectedplanet.net/en/legal'
+  attribution: UNEP-WCMC and IUCN / Protected Planet
+  date_downloaded: '2026-09-12T06:22:26.168547+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates: null
+  format: JSON / GeoJSON
+  raw_file: []
+  processed_file: data/processed/mpa.geojson
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: manual_download_required
+  records: 0
+  expected_filename: data/raw/india_mpa.geojson
+  error: Account/terms-controlled download. No replacement circles or approximate
+    legal boundaries are invented.
+- id: nga_ports
+  name: NGA World Port Index 2019 via NOAA digital atlas
+  provider: US National Geospatial-Intelligence Agency; NOAA
+  source_type: API or public bulk download
+  source: https://gis.ngdc.noaa.gov/arcgis/rest/services/nccos/PIRO_DigitalAtlas/MapServer/30
+  license: Public domain US government data
+  attribution: US National Geospatial-Intelligence Agency; NOAA
+  date_downloaded: '2026-09-12T06:25:48.718722+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  coverage_dates:
+  - '2019'
+  - '2019'
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/nga_ports_00000.geojson
+  - data/raw/nga_ports_02000.geojson
+  processed_file: data/processed/ports.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 3630
+  added_to_merged_ports: 2663
+- id: historical_ais
+  name: NOAA MarineCadastre actual AIS broadcast prefix sample, 2024-01-01
+  provider: NOAA Office for Coastal Management / BOEM / US Coast Guard
+  source_type: API or public bulk download
+  source: https://noaaocm.blob.core.windows.net/ais/csv2/csv2024/index.html
+  license: Public US government data; NOAA MarineCadastre attribution
+  attribution: NOAA Office for Coastal Management / BOEM / US Coast Guard
+  date_downloaded: '2026-09-12T08:42:15.707986+00:00'
+  geographic_coverage: United States coastal waters / global scalability context;
+    not India
+  coverage_dates:
+  - '2024-01-01T00:00:00Z'
+  - '2024-01-01T00:17:40Z'
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/noaa_ais_2024_01_01.zst.prefix
+  - data/raw/noaa_ais_2024_01_01_prefix.csv
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 75286
+  caveat: US waters / global demonstration context, not Indian AIS. A non-random prefix
+    sample cannot establish tracking silence outside its recording window.
+  vessel_identities: 11037
+  replay_vessels: 60
+  replay_observations: 926
+- id: gfw_fishing
+  name: Global Fishing Watch fishing events
+  provider: Global Fishing Watch
+  source: https://gateway.api.globalfishingwatch.org/v3
+  source_type: Authenticated API
+  license: GFW API terms / dataset license
+  attribution: Global Fishing Watch
+  status: credentials_rejected
+  error: HTTP 401 invalid token
+  records: 0
+  date_downloaded: null
+  coverage_dates: null
+  geographic_coverage: India / Arabian Sea
+  format: JSON
+  raw_file: []
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
+    scripts/acquire_gfw.py
+  manual_download: Use https://globalfishingwatch.org/data-download/ under its account
+    and license terms. No authenticated endpoint is bypassed.
+- id: gfw_encounter
+  name: Global Fishing Watch encounters
+  provider: Global Fishing Watch
+  source: https://gateway.api.globalfishingwatch.org/v3
+  source_type: Authenticated API
+  license: GFW API terms / dataset license
+  attribution: Global Fishing Watch
+  status: credentials_rejected
+  error: HTTP 401 invalid token
+  records: 0
+  date_downloaded: null
+  coverage_dates: null
+  geographic_coverage: India / Arabian Sea
+  format: JSON
+  raw_file: []
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
+    scripts/acquire_gfw.py
+  manual_download: Use https://globalfishingwatch.org/data-download/ under its account
+    and license terms. No authenticated endpoint is bypassed.
+- id: gfw_loitering
+  name: Global Fishing Watch loitering
+  provider: Global Fishing Watch
+  source: https://gateway.api.globalfishingwatch.org/v3
+  source_type: Authenticated API
+  license: GFW API terms / dataset license
+  attribution: Global Fishing Watch
+  status: credentials_rejected
+  error: HTTP 401 invalid token
+  records: 0
+  date_downloaded: null
+  coverage_dates: null
+  geographic_coverage: India / Arabian Sea
+  format: JSON
+  raw_file: []
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
+    scripts/acquire_gfw.py
+  manual_download: Use https://globalfishingwatch.org/data-download/ under its account
+    and license terms. No authenticated endpoint is bypassed.
+- id: gfw_port_visit
+  name: Global Fishing Watch port visits
+  provider: Global Fishing Watch
+  source: https://gateway.api.globalfishingwatch.org/v3
+  source_type: Authenticated API
+  license: GFW API terms / dataset license
+  attribution: Global Fishing Watch
+  status: credentials_rejected
+  error: HTTP 401 invalid token
+  records: 0
+  date_downloaded: null
+  coverage_dates: null
+  geographic_coverage: India / Arabian Sea
+  format: JSON
+  raw_file: []
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
+    scripts/acquire_gfw.py
+  manual_download: Use https://globalfishingwatch.org/data-download/ under its account
+    and license terms. No authenticated endpoint is bypassed.
+- id: gfw_gap
+  name: Global Fishing Watch AIS gaps
+  provider: Global Fishing Watch
+  source: https://gateway.api.globalfishingwatch.org/v3
+  source_type: Authenticated API
+  license: GFW API terms / dataset license
+  attribution: Global Fishing Watch
+  status: credentials_rejected
+  error: HTTP 401 invalid token
+  records: 0
+  date_downloaded: null
+  coverage_dates: null
+  geographic_coverage: India / Arabian Sea
+  format: JSON
+  raw_file: []
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
+    scripts/acquire_gfw.py
+  manual_download: Use https://globalfishingwatch.org/data-download/ under its account
+    and license terms. No authenticated endpoint is bypassed.
+- id: gfw_sar
+  name: Global Fishing Watch SAR detection report
+  provider: Global Fishing Watch
+  source: https://gateway.api.globalfishingwatch.org/v3
+  source_type: Authenticated API
+  license: GFW API terms / dataset license
+  attribution: Global Fishing Watch
+  status: credentials_rejected
+  error: HTTP 401 invalid token
+  records: 0
+  date_downloaded: null
+  coverage_dates: null
+  geographic_coverage: India / Arabian Sea
+  format: JSON
+  raw_file: []
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
+    scripts/acquire_gfw.py
+  manual_download: Use https://globalfishingwatch.org/data-download/ under its account
+    and license terms. No authenticated endpoint is bypassed.
+- id: gfw_fishing_effort
+  name: Global Fishing Watch fishing activity report
+  provider: Global Fishing Watch
+  source: https://gateway.api.globalfishingwatch.org/v3
+  source_type: Authenticated API
+  license: GFW API terms / dataset license
+  attribution: Global Fishing Watch
+  status: credentials_rejected
+  error: HTTP 401 invalid token
+  records: 0
+  date_downloaded: null
+  coverage_dates: null
+  geographic_coverage: India / Arabian Sea
+  format: JSON
+  raw_file: []
+  processed_file: data/processed/vessels.json
+  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
+    scripts/acquire_gfw.py
+  manual_download: Use https://globalfishingwatch.org/data-download/ under its account
+    and license terms. No authenticated endpoint is bypassed.

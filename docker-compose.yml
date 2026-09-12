@@ -1,0 +1,20 @@
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    profiles: [postgis]
+    environment:
+      POSTGRES_USER: samudra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+      POSTGRES_DB: samudra
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U samudra']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  postgis_data:
