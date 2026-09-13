@@ -159,6 +159,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   const cameraRef = useRef(camera);
   const cameraAnimation = useRef(0);
   const introTimer = useRef<number | null>(null);
+  const threeLoadTimer = useRef<number | null>(null);
   const viewGeometryRef = useRef({ dimensions, left: 0, right: 0 });
   viewGeometryRef.current = { dimensions, left: controlInsets?.left ?? panelInsets.left, right: controlInsets?.right ?? panelInsets.right };
   const onCameraChangeRef = useRef(onCameraChange);
@@ -312,7 +313,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   const applyCamera = useCallback((next: Camera, syncGoogle = true) => {
     const safe = { latitude: clamp(next.latitude, -78, 78), longitude: clamp(next.longitude, -180, 180), zoom: clamp(next.zoom, 2, 13) };
     cameraRef.current = safe;
-    setCamera(safe);
+    setCamera(previous => previous.latitude === safe.latitude && previous.longitude === safe.longitude && previous.zoom === safe.zoom ? previous : safe);
     if (syncGoogle && mapInstance.current && engineRef.current === "google") {
       mapInstance.current.moveCamera({ center: { lat: safe.latitude, lng: safe.longitude }, zoom: safe.zoom });
     }
@@ -363,9 +364,8 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   const fitPoints = useCallback((points: MapPosition[]) => {
     const valid = points.filter(validPosition);
     if (!valid.length) { flyTo(DEFAULT_CAMERA, DEFAULT_CAMERA.zoom); return; }
-    const latitude = (Math.min(...valid.map(p => p.latitude)) + Math.max(...valid.map(p => p.latitude))) / 2;
-    const longitude = (Math.min(...valid.map(p => p.longitude)) + Math.max(...valid.map(p => p.longitude))) / 2;
     const projected = valid.map(p => worldPoint(p.longitude, p.latitude));
+    const { latitude, longitude } = unproject((Math.min(...projected.map(p => p.x)) + Math.max(...projected.map(p => p.x))) / 2, (Math.min(...projected.map(p => p.y)) + Math.max(...projected.map(p => p.y))) / 2);
     const spanX = Math.max(...projected.map(p => p.x)) - Math.min(...projected.map(p => p.x));
     const spanY = Math.max(...projected.map(p => p.y)) - Math.min(...projected.map(p => p.y));
     const view = viewGeometryRef.current;
@@ -379,7 +379,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
     flyToRoute: (origin, destination) => {
       setFollowing(null);
       if (origin && destination) fitPoints([origin, destination]);
-      else fitPoints((route?.optimized?.coordinates || route?.baseline?.coordinates || []).map(([longitude, latitude]) => ({ latitude, longitude })));
+      else fitPoints([...(route?.optimized?.coordinates || []), ...(route?.baseline?.coordinates || [])].map(([longitude, latitude]) => ({ latitude, longitude })));
     },
     followVessel: id => { const vessel = validVessels.find(v => v.id === id); if (vessel) { setFollowing(id); flyTo(vessel, 8.2); } },
     orbitInvestigation: location => {
@@ -393,12 +393,19 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
   }), [flyTo, fitPoints, route, validVessels, validHotspots, validPorts]);
 
   useEffect(() => {
-    if (focus && validPosition(focus)) { setFollowing(null); flyTo(focus, focus.zoom || 7.8); }
+    if (focus && validPosition(focus)) {
+      const targetsFollowedVessel = followingVessel && (focus.id === followingVessel.id || (focus.latitude === followingVessel.latitude && focus.longitude === followingVessel.longitude));
+      if (!targetsFollowedVessel) setFollowing(null);
+      flyTo(focus, focus.zoom || 7.8);
+    }
   // Camera commands deliberately run only when a new focus target arrives.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.latitude, focus?.longitude, focus?.zoom, focus?.id]);
 
-  useEffect(() => () => cancelAnimationFrame(cameraAnimation.current), []);
+  useEffect(() => () => {
+    cancelAnimationFrame(cameraAnimation.current);
+    if (threeLoadTimer.current !== null) window.clearTimeout(threeLoadTimer.current);
+  }, []);
 
   useEffect(() => {
     const next = collectors.filter(c => c.route?.length).map(c => ({ id: c.id, coordinates: c.route! }));
@@ -512,6 +519,7 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
       const library = await runtime.importLibrary("maps3d") as Maps3DLibrary;
       if (!library.Map3DElement) throw new Error("3D library unavailable");
       threeLibrary.current = library;
+      const existingMap = Boolean(threeMap.current);
       if (!threeMap.current) {
         const map = new library.Map3DElement({
           center: { lat: cameraRef.current.latitude, lng: cameraRef.current.longitude, altitude: 0 },
@@ -525,7 +533,13 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
           setThreeStatus("unavailable");
         };
         const timeout = window.setTimeout(() => { if (!initialised) fallback(); }, 18000);
-        map.addEventListener("gmp-steadychange", () => { initialised = true; window.clearTimeout(timeout); });
+        threeLoadTimer.current = timeout;
+        map.addEventListener("gmp-steadychange", event => {
+          if ((event as Event & { isSteady?: boolean }).isSteady !== true) return;
+          initialised = true;
+          window.clearTimeout(timeout);
+          setThreeStatus("available");
+        });
         map.addEventListener("gmp-error", () => { window.clearTimeout(timeout); fallback(); });
         const updateCamera = () => {
           if (engineRef.current !== "3d" || !map.center) return;
@@ -536,7 +550,8 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
         threeContainer.current.replaceChildren(map);
         threeMap.current = map;
       }
-      setThreeStatus("available"); setEngine("3d");
+      if (existingMap) setThreeStatus("available");
+      setEngine("3d");
     } catch { setThreeStatus("unavailable"); }
   };
 
@@ -709,9 +724,9 @@ const OceanMap = forwardRef<OceanMapHandle, OceanMapProps>(function OceanMap({
           {hotspot.drift && <path d={pathFromCoordinates(hotspot.drift)} stroke="#edbd70" strokeWidth="1.4" strokeDasharray="3 6" fill="none" opacity="0.7"><title>Modelled drift estimate · increasing uncertainty</title></path>}
           {isSelected && hotspot.driftPoints?.filter(point => point.hours > 0 && validPosition(point)).map(point => {
             const driftPosition = project(point.latitude, point.longitude);
-            const localKmPerPixel = Math.cos(point.latitude * Math.PI / 180) * 40075.017 / (256 * worldScale);
+            const localKmPerPixel = Math.cos(clamp(point.latitude, -85, 85) * Math.PI / 180) * 40075.017 / (256 * worldScale);
             return <g key={point.hours} transform={`translate(${driftPosition.x},${driftPosition.y})`}>
-              {point.uncertainty_km != null && <circle r={Math.max(1, point.uncertainty_km / localKmPerPixel)} fill="#dcb576" fillOpacity="0.03" stroke="#dcb576" strokeOpacity="0.4" strokeWidth="0.8" strokeDasharray="2 3"><title>Illustrative uncertainty parameter: {point.uncertainty_km} km. Not a calibrated probability interval.</title></circle>}
+              {point.uncertainty_km != null && Number.isFinite(point.uncertainty_km) && point.uncertainty_km >= 0 && <circle r={point.uncertainty_km / localKmPerPixel} fill="#dcb576" fillOpacity="0.03" stroke="#dcb576" strokeOpacity="0.4" strokeWidth="0.8" strokeDasharray="2 3"><title>Illustrative uncertainty parameter: {point.uncertainty_km} km. Not a calibrated probability interval.</title></circle>}
               <circle r="2" fill="#e5c08b" />
               {camera.zoom > 8 && <text x="5" y="-5" fill="#d1b788" fontSize="8">+{point.hours}h</text>}
             </g>;

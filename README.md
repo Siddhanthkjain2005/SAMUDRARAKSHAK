@@ -105,7 +105,7 @@ Results compare nautical-mile distance, voyage time, estimated fuel, estimated C
 
 ## Mission 2 — Ocean Sentinel
 
-Select an actual cached vessel or live AIS observation. Rolling behaviour features include correct angular wrap, speed distribution, movement straightness, dwell, slow movement and tracking gaps. Isolation Forest is available when enough samples exist; deterministic rules provide an explainable fallback.
+Select an actual cached vessel or live AIS observation. Rolling behaviour features include correct angular wrap, speed distribution, movement straightness, dwell, slow movement and tracking gaps. The current engine uses explainable deterministic rules. A learned Isolation Forest baseline remains future work and is not used to generate the displayed scores.
 
 Historical events and identity, available jurisdiction polygons, observations, and skeptical counter-evidence form an inspectable evidence graph. Activity risk and evidence confidence are separate outputs. Missing SAR, GFW, identity, or coverage evidence remains missing; it is not fabricated. Tracking silence alone never establishes illegality. The system does not intercept or penalize vessels.
 
@@ -123,7 +123,7 @@ No fabricated ship positions are used to fill the map. Map markers and nearby da
 
 ## Judge demo
 
-Use **Judge demo** in the header. The choreography moves through the ocean overview, real route optimization, vessel evidence, simulated fleet planning, agent network, and calculated impact.
+Choose a **2, 3 or 5 minute** pacing preset and use **Judge demo** in the header. The choreography moves through the ocean overview, real route optimization, vessel evidence, simulated fleet planning, agent network, and calculated impact. The fleet scene automatically triggers a simulated battery drop and recalculates assignments. Mission computation and presenter pauses extend the selected pacing duration.
 
 - **Space**: pause/resume.
 - **Left / Right**: previous/next scene.
@@ -146,7 +146,7 @@ npm --prefix frontend run build
 
 ## Storage and deployment
 
-SQLite WAL is the default durable local store. `docker-compose.yml` and `backend/schema.sql` provide an optional PostgreSQL/PostGIS development foundation. Consult the implementation status below before treating optional PostGIS wiring as an active runtime capability.
+SQLite WAL is the active durable local store. `docker-compose.yml` and `backend/schema.sql` provide a PostgreSQL/PostGIS development foundation; application queries are not yet wired to PostGIS. Starting the optional database does not switch the runtime away from SQLite.
 
 This deliverable runs locally; it does not include a public production deployment, operational access controls, fleet hardware integration, or certified navigational services. For remote deployment, put authenticated HTTPS/WSS services behind a reverse proxy, restrict CORS and Maps referrers, and configure secrets in the host environment.
 
@@ -169,4 +169,3 @@ Designed for future integration with authorized coastal radar, VMS, satellite AI
   - **Dark Vessel Investigation:** Automated anomaly detection, historical identity synthesis, and multi-agent cross-referencing.
   - **Marine Debris Response:** Dynamic drift modeling and autonomous recovery fleet coordination.
 - **Tech Stack:** Next.js (TypeScript, Tailwind CSS), FastAPI (Python 3.12, Uvicorn, SQLite WAL), geospatial processing (GeoJSON, Open-Meteo, AISStream).
-

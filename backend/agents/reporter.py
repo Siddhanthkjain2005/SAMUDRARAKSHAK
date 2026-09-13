@@ -4,7 +4,7 @@ import json
 def render_report(mission):
     name={'route':'Green Route Report','investigation':'Vessel Investigation Report','cleanup':'Marine Cleanup Mission Report'}.get(mission['type'],'Mission Report')
     trace=mission.get('trace',[])
-    findings=''.join(f"<tr><td>{html.escape(t['agent_name'])}</td><td>{html.escape(t['message'])}</td><td>{t.get('execution_ms',0):.1f} ms</td></tr>" for t in trace)
+    findings=''.join(f"<tr><td>{html.escape(t['agent_name'])}</td><td><b class=\"status-{html.escape(str(t.get('status','COMPLETED')).lower())}\">{html.escape(str(t.get('status','COMPLETED')))}</b> {html.escape(t['message'])}</td><td>{t.get('execution_ms',0):.1f} ms</td></tr>" for t in trace)
     assumptions=''.join(f'<li>{html.escape(str(a))}</li>' for a in mission.get('assumptions',[]))
     coords=mission.get('optimized',{}).get('coordinates',[])
     if not coords:

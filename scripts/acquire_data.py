@@ -77,7 +77,7 @@ def fetch(url, filename, params=None, body=None, auth=False, timeout=50):
         return path
     headers = {'User-Agent': 'SamudraRakshakAI-ResearchPrototype/1.0'}
     if auth:
-        token = os.getenv('GFW_API_ACCESS_TOKEN')
+        token = os.getenv('GFW_TOKEN') or os.getenv('GFW_API_ACCESS_TOKEN')
         if not token:
             raise RuntimeError('GFW_API_ACCESS_TOKEN not configured')
         headers['Authorization'] = 'Bearer ' + token
@@ -291,8 +291,8 @@ def acquire_gfw():
     source('gfw_identity', 'Global Fishing Watch India vessel identity', 'Global Fishing Watch',
            'CC BY-SA 4.0; GFW API terms and data caveats apply', 'https://api-doc.globalfishingwatch.org/docs/v3/vessels/search',
            'data/processed/vessel_identity.json')
-    if not os.getenv('GFW_API_ACCESS_TOKEN'):
-        register('gfw_identity', status='credentials_required', error='Set GFW_API_ACCESS_TOKEN in .env')
+    if not (os.getenv('GFW_TOKEN') or os.getenv('GFW_API_ACCESS_TOKEN')):
+        register('gfw_identity', status='credentials_required', error='Set GFW_API_ACCESS_TOKEN or GFW_TOKEN in .env')
         return
     files, count, since = [], 0, None
     for page in range(25):

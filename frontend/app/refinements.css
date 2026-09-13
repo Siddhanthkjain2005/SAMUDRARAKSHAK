@@ -14,16 +14,31 @@
 .track-profile{padding:14px 8px 8px;border:1px solid #324d5580;border-radius:5px;margin:16px 0;background:#0a1d2360}
 .track-profile .panel-heading{font-size:7px;letter-spacing:.7px;margin-bottom:10px}
 .track-profile>small{font-size:7px;color:#718f97;display:block;padding:0 4px 5px;line-height:1.6}
+.score-breakdown{padding:12px 10px;border:1px solid #324d5580;border-radius:5px;margin:14px 0;background:#0a1d2360}
+.score-breakdown .panel-heading{margin-bottom:8px}
+.score-row{display:grid;grid-template-columns:1fr auto;gap:3px 8px;padding:6px 0;border-bottom:1px solid #28424a66;font-size:9px}
+.score-row:last-of-type{border-bottom:0}
+.score-row b{color:#edbd74;font:10px monospace}
+.score-row small{grid-column:1/3;color:#6f8d95;font-size:7px}
+.score-empty,.score-method{color:#78939a;font-size:8px;line-height:1.6}
+.score-method{margin-top:9px}
+.score-breakdown .text-button{font-size:8px;margin-top:8px}
 .map-container .ocean-map-bottom{font-size:8px}
 .metric-stat{min-width:0}
+.demo-duration{background:#102b26;border:1px solid #466a60;color:#a1f2d5;border-radius:5px;padding:9px 7px;font-size:10px}
+.header-actions{gap:12px}
+@media(max-width:600px){.demo-duration{max-width:60px;padding:7px 3px}.header-actions{gap:5px}}
 .panel-heading{line-height:1.5}
 .right-panel .feed-intro{margin-bottom:20px}
 .right-panel .feed-item{margin-bottom:18px}
 .environment-card .badge{font-size:6px}
+.agent-card.skipped{border-color:#66573f66;background:#3b2e1f22}
+.agent-card.skipped .agent-symbol{color:#b89b6c;border-color:#66573f66;background:#3b2e1f33}
+.agent-card.skipped .agent-state{color:#b89b6c}
 @media(min-width:1101px){
  .main{padding-top:20px}.page-top{margin-bottom:18px}
  .metrics-strip{padding:15px 0;margin-bottom:16px}
- .operations{height:calc(100dvh - 396px);min-height:510px}
+ .operations{height:calc(100dvh - 450px);min-height:360px}
  .agent-timeline{min-height:81px;margin-top:12px;padding:13px 17px}
  .page-top h1{font-size:27px;line-height:1.1;margin:8px 0}
  .page-top p{line-height:1.4}.metrics-strip .stat-value{line-height:1.1}
@@ -32,7 +47,7 @@
 @media(min-width:1700px){
  .main{padding-top:23px}.page-top{margin-bottom:21px}
  .metrics-strip{padding:17px 0;margin-bottom:18px}
- .operations{height:calc(100dvh - 402px);min-height:520px}
+ .operations{height:calc(100dvh - 450px);min-height:360px}
  .agent-timeline{min-height:85px}.left-panel h2{font-size:27px}
  .left-panel .intro-copy{font-size:11px;margin-bottom:22px}
  .mission-tile{padding:13px 11px}.coast-note{margin-top:23px}

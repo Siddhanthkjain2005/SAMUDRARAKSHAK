@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import re
 from statistics import mean, median, pvariance
 from backend.services.geospatial import haversine, angle_difference
 
@@ -6,7 +7,10 @@ def parse_time(value):
     if not value:
         return None
     try:
-        timestamp=str(value).replace(' UTC','+00:00').replace('Z','+00:00')
+        # AISStream emits Go timestamps such as "...548771885 +0000 UTC".
+        # Keep the source string untouched elsewhere; normalize only for arithmetic.
+        timestamp=str(value).strip().removesuffix(' UTC').strip().replace('Z','+00:00')
+        timestamp=re.sub(r'\s+([+-]\d{2}:?\d{2})$',r'\1',timestamp)
         parsed=datetime.fromisoformat(timestamp)
         return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
     except (ValueError,TypeError):
@@ -14,7 +18,7 @@ def parse_time(value):
 
 def behaviour_features(track):
     points=[p for p in track if p.get('latitude') is not None and p.get('longitude') is not None]
-    points.sort(key=lambda p:str(p.get('timestamp','')))
+    points.sort(key=lambda p:parse_time(p.get('timestamp')) or datetime.min.replace(tzinfo=timezone.utc))
     speeds=[float(p.get('speed',p.get('sog')) or 0) for p in points if p.get('speed',p.get('sog')) is not None]
     courses=[float(p.get('course',p.get('cog'))) for p in points if p.get('course',p.get('cog')) is not None]
     turns=[angle_difference(a,b) for a,b in zip(courses,courses[1:])]

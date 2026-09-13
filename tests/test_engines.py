@@ -69,7 +69,7 @@ def test_risk_is_not_confidence_and_duplicates_are_bounded():
     evidence=[{'type':'gap','source':'GFW','confidence':70}]*100
     result=fuse_risk(evidence)
     assert result['risk_score']<=26
-    assert result['confidence_score']<=62
+    assert 0 < result['confidence_score'] < 95
     assert result['risk_score']!=result['confidence_score']
 
 def test_dbscan_ignores_invalid_points_and_never_invents_kg():

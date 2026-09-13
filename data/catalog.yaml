@@ -1,4 +1,4 @@
-generated_at: '2026-09-12T13:35:08.452084+00:00'
+generated_at: '2026-09-13T02:49:20.556588+00:00'
 region_bbox:
 - 55
 - -5
@@ -126,23 +126,46 @@ datasets:
   error: Export requires source list selection through the provider interface; import
     supported by preprocessing.
 - id: gfw_identity
-  name: Global Fishing Watch vessel identity
+  name: Global Fishing Watch India vessel identity
   provider: Global Fishing Watch
-  source_type: Authenticated API
-  source: https://gateway.api.globalfishingwatch.org/v3
-  license: GFW API terms / dataset license
+  source_type: API or public bulk download
+  source: https://api-doc.globalfishingwatch.org/docs/v3/vessels/search
+  license: CC BY-SA 4.0; GFW API terms and data caveats apply
   attribution: Global Fishing Watch
-  date_downloaded: null
-  geographic_coverage: India / Arabian Sea
+  date_downloaded: '2026-09-13T02:29:01.918903+00:00'
+  geographic_coverage: Indian Ocean / India; global context where indicated
   coverage_dates: null
-  format: JSON
-  raw_file: []
-  processed_file: data/processed/vessels.json
-  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
-    scripts/acquire_gfw.py
-  status: credentials_rejected
-  records: 0
-  error: HTTP 401 invalid token
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/gfw_identity_000.json
+  - data/raw/gfw_identity_001.json
+  - data/raw/gfw_identity_002.json
+  - data/raw/gfw_identity_003.json
+  - data/raw/gfw_identity_004.json
+  - data/raw/gfw_identity_005.json
+  - data/raw/gfw_identity_006.json
+  - data/raw/gfw_identity_007.json
+  - data/raw/gfw_identity_008.json
+  - data/raw/gfw_identity_009.json
+  - data/raw/gfw_identity_010.json
+  - data/raw/gfw_identity_011.json
+  - data/raw/gfw_identity_012.json
+  - data/raw/gfw_identity_013.json
+  - data/raw/gfw_identity_014.json
+  - data/raw/gfw_identity_015.json
+  - data/raw/gfw_identity_016.json
+  - data/raw/gfw_identity_017.json
+  - data/raw/gfw_identity_018.json
+  - data/raw/gfw_identity_019.json
+  - data/raw/gfw_identity_020.json
+  - data/raw/gfw_identity_021.json
+  - data/raw/gfw_identity_022.json
+  - data/raw/gfw_identity_023.json
+  - data/raw/gfw_identity_024.json
+  processed_file: data/processed/gfw_identity.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
+  status: ready
+  records: 1250
   manual_download: Use https://globalfishingwatch.org/data-download/ under its account
     and license terms. No authenticated endpoint is bypassed.
 - id: weather
@@ -338,142 +361,163 @@ datasets:
   replay_vessels: 60
   replay_observations: 926
 - id: gfw_fishing
-  name: Global Fishing Watch fishing events
+  name: GFW historical fishing events around India
   provider: Global Fishing Watch
-  source: https://gateway.api.globalfishingwatch.org/v3
-  source_type: Authenticated API
-  license: GFW API terms / dataset license
+  source: https://api-doc.globalfishingwatch.org/our-apis/documentation/docs/v3/events/get-all-events
+  source_type: API or public bulk download
+  license: CC BY-SA 4.0; GFW API terms and caveats
   attribution: Global Fishing Watch
-  status: credentials_rejected
-  error: HTTP 401 invalid token
-  records: 0
-  date_downloaded: null
-  coverage_dates: null
-  geographic_coverage: India / Arabian Sea
-  format: JSON
-  raw_file: []
+  status: downloaded
+  records: 2000
+  date_downloaded: '2026-09-13T02:30:45.592489+00:00'
+  coverage_dates:
+  - '2024-01-01'
+  - '2026-01-01'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/gfw_events_fishing_0000.json
+  - data/raw/gfw_events_fishing_0500.json
+  - data/raw/gfw_events_fishing_1000.json
+  - data/raw/gfw_events_fishing_1500.json
   processed_file: data/processed/vessels.json
-  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
-    scripts/acquire_gfw.py
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
   manual_download: Use https://globalfishingwatch.org/data-download/ under its account
     and license terms. No authenticated endpoint is bypassed.
 - id: gfw_encounter
-  name: Global Fishing Watch encounters
+  name: GFW historical encounter events around India
   provider: Global Fishing Watch
-  source: https://gateway.api.globalfishingwatch.org/v3
-  source_type: Authenticated API
-  license: GFW API terms / dataset license
+  source: https://api-doc.globalfishingwatch.org/our-apis/documentation/docs/v3/events/get-all-events
+  source_type: API or public bulk download
+  license: CC BY-SA 4.0; GFW API terms and caveats
   attribution: Global Fishing Watch
-  status: credentials_rejected
-  error: HTTP 401 invalid token
-  records: 0
-  date_downloaded: null
-  coverage_dates: null
-  geographic_coverage: India / Arabian Sea
-  format: JSON
-  raw_file: []
+  status: downloaded
+  records: 2000
+  date_downloaded: '2026-09-13T02:31:54.144033+00:00'
+  coverage_dates:
+  - '2024-01-01'
+  - '2026-01-01'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/gfw_events_encounter_0000.json
+  - data/raw/gfw_events_encounter_0500.json
+  - data/raw/gfw_events_encounter_1000.json
+  - data/raw/gfw_events_encounter_1500.json
   processed_file: data/processed/vessels.json
-  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
-    scripts/acquire_gfw.py
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
   manual_download: Use https://globalfishingwatch.org/data-download/ under its account
     and license terms. No authenticated endpoint is bypassed.
 - id: gfw_loitering
-  name: Global Fishing Watch loitering
+  name: GFW historical loitering events around India
   provider: Global Fishing Watch
-  source: https://gateway.api.globalfishingwatch.org/v3
-  source_type: Authenticated API
-  license: GFW API terms / dataset license
+  source: https://api-doc.globalfishingwatch.org/our-apis/documentation/docs/v3/events/get-all-events
+  source_type: API or public bulk download
+  license: CC BY-SA 4.0; GFW API terms and caveats
   attribution: Global Fishing Watch
-  status: credentials_rejected
-  error: HTTP 401 invalid token
-  records: 0
-  date_downloaded: null
-  coverage_dates: null
-  geographic_coverage: India / Arabian Sea
-  format: JSON
-  raw_file: []
+  status: downloaded
+  records: 2000
+  date_downloaded: '2026-09-13T02:33:33.186963+00:00'
+  coverage_dates:
+  - '2024-01-01'
+  - '2026-01-01'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/gfw_events_loitering_0000.json
+  - data/raw/gfw_events_loitering_0500.json
+  - data/raw/gfw_events_loitering_1000.json
+  - data/raw/gfw_events_loitering_1500.json
   processed_file: data/processed/vessels.json
-  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
-    scripts/acquire_gfw.py
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
   manual_download: Use https://globalfishingwatch.org/data-download/ under its account
     and license terms. No authenticated endpoint is bypassed.
 - id: gfw_port_visit
-  name: Global Fishing Watch port visits
+  name: GFW historical port_visit events around India
   provider: Global Fishing Watch
-  source: https://gateway.api.globalfishingwatch.org/v3
-  source_type: Authenticated API
-  license: GFW API terms / dataset license
+  source: https://api-doc.globalfishingwatch.org/our-apis/documentation/docs/v3/events/get-all-events
+  source_type: API or public bulk download
+  license: CC BY-SA 4.0; GFW API terms and caveats
   attribution: Global Fishing Watch
-  status: credentials_rejected
-  error: HTTP 401 invalid token
-  records: 0
-  date_downloaded: null
-  coverage_dates: null
-  geographic_coverage: India / Arabian Sea
-  format: JSON
-  raw_file: []
+  status: downloaded
+  records: 2000
+  date_downloaded: '2026-09-13T02:35:27.080221+00:00'
+  coverage_dates:
+  - '2024-01-01'
+  - '2026-01-01'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/gfw_events_port_visit_0000.json
+  - data/raw/gfw_events_port_visit_0500.json
+  - data/raw/gfw_events_port_visit_1000.json
+  - data/raw/gfw_events_port_visit_1500.json
   processed_file: data/processed/vessels.json
-  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
-    scripts/acquire_gfw.py
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
   manual_download: Use https://globalfishingwatch.org/data-download/ under its account
     and license terms. No authenticated endpoint is bypassed.
 - id: gfw_gap
-  name: Global Fishing Watch AIS gaps
+  name: GFW historical gap events around India
   provider: Global Fishing Watch
-  source: https://gateway.api.globalfishingwatch.org/v3
-  source_type: Authenticated API
-  license: GFW API terms / dataset license
+  source: https://api-doc.globalfishingwatch.org/our-apis/documentation/docs/v3/events/get-all-events
+  source_type: API or public bulk download
+  license: CC BY-SA 4.0; GFW API terms and caveats
   attribution: Global Fishing Watch
-  status: credentials_rejected
-  error: HTTP 401 invalid token
-  records: 0
-  date_downloaded: null
-  coverage_dates: null
-  geographic_coverage: India / Arabian Sea
-  format: JSON
-  raw_file: []
+  status: downloaded
+  records: 1305
+  date_downloaded: '2026-09-13T02:36:12.037288+00:00'
+  coverage_dates:
+  - '2024-01-01'
+  - '2026-01-01'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/gfw_events_gap_0000.json
+  - data/raw/gfw_events_gap_0500.json
+  - data/raw/gfw_events_gap_1000.json
   processed_file: data/processed/vessels.json
-  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
-    scripts/acquire_gfw.py
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
   manual_download: Use https://globalfishingwatch.org/data-download/ under its account
     and license terms. No authenticated endpoint is bypassed.
 - id: gfw_sar
-  name: Global Fishing Watch SAR detection report
+  name: GFW sar regional grid report
   provider: Global Fishing Watch
-  source: https://gateway.api.globalfishingwatch.org/v3
-  source_type: Authenticated API
-  license: GFW API terms / dataset license
+  source: https://api-doc.globalfishingwatch.org/our-apis/documentation/docs/v3/4wings/report
+  source_type: API or public bulk download
+  license: CC BY-SA 4.0; GFW API terms and caveats
   attribution: Global Fishing Watch
-  status: credentials_rejected
-  error: HTTP 401 invalid token
-  records: 0
-  date_downloaded: null
-  coverage_dates: null
-  geographic_coverage: India / Arabian Sea
-  format: JSON
-  raw_file: []
-  processed_file: data/processed/vessels.json
-  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
-    scripts/acquire_gfw.py
+  status: ready
+  records: 1
+  date_downloaded: '2026-09-13T02:36:28.437643+00:00'
+  coverage_dates:
+  - '2025-01-01'
+  - '2025-02-01'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/gfw_report_sar.json
+  processed_file: data/processed/sar.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
   manual_download: Use https://globalfishingwatch.org/data-download/ under its account
     and license terms. No authenticated endpoint is bypassed.
 - id: gfw_fishing_effort
-  name: Global Fishing Watch fishing activity report
+  name: GFW fishing effort regional grid report
   provider: Global Fishing Watch
-  source: https://gateway.api.globalfishingwatch.org/v3
-  source_type: Authenticated API
-  license: GFW API terms / dataset license
+  source: https://api-doc.globalfishingwatch.org/our-apis/documentation/docs/v3/4wings/report
+  source_type: API or public bulk download
+  license: CC BY-SA 4.0; GFW API terms and caveats
   attribution: Global Fishing Watch
-  status: credentials_rejected
-  error: HTTP 401 invalid token
-  records: 0
-  date_downloaded: null
-  coverage_dates: null
-  geographic_coverage: India / Arabian Sea
-  format: JSON
-  raw_file: []
-  processed_file: data/processed/vessels.json
-  refresh_strategy: Replace GFW_API_ACCESS_TOKEN with a valid provider token; rerun
-    scripts/acquire_gfw.py
+  status: ready
+  records: 1
+  date_downloaded: '2026-09-13T02:36:56.467568+00:00'
+  coverage_dates:
+  - '2025-01-01'
+  - '2025-02-01'
+  geographic_coverage: Indian Ocean / India; global context where indicated
+  format: JSON / GeoJSON
+  raw_file:
+  - data/raw/gfw_report_fishing_effort.json
+  processed_file: data/processed/fishing_effort.json
+  refresh_strategy: Run python scripts/acquire_data.py --all --refresh
   manual_download: Use https://globalfishingwatch.org/data-download/ under its account
     and license terms. No authenticated endpoint is bypassed.

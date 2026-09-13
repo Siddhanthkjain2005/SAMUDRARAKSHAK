@@ -5,6 +5,12 @@ export interface Provider {id:string;name:string;status:string;records:number|nu
 export interface Trace {agent:string;agent_name?:string;timestamp:string;status:string;message:string;output?:any}
 export interface Bootstrap {providers:Provider[];stats:Record<string,number>;ports:Port[];vessels:Vessel[];debris:any[];hotspots:any[];marine:any[];agents:any[];scenarios:{routes:{origin_id:string;destination_id:string;name:string}[];investigations:string[];historical_investigations?:string[]};recent_missions?:{id:string;type:string}[]}
 export interface ReplayState {session_id?:string;status:'RUNNING'|'PAUSED'|'COMPLETED'|'STOPPED'|'IDLE';vessel_id?:string;vessel_name?:string;source?:string;provenance?:string;speed?:number;observations?:number;index?:number;progress_pct?:number;current_timestamp?:string;geographic_context?:string;detail?:string}
+export function sourceTime(value?:string):number {
+ if(!value)return NaN;
+ const normalized=value.trim().replace(/ UTC$/,'').replace(/^(\d{4}-\d{2}-\d{2}) /,'$1T').replace(/\.(\d{3})\d+/,'\.$1').replace(/\s*([+-]\d{2}):?(\d{2})$/,'$1:$2');
+ return Date.parse(/[Zz]$|[+-]\d{2}:\d{2}$/.test(normalized)?normalized:normalized+'Z');
+}
+export function sourceTimeLabel(value?:string):string {const time=sourceTime(value);return Number.isFinite(time)?new Date(time).toLocaleString('en-GB',{timeZone:'UTC'})+' UTC':'Time unavailable'}
 export function mergeTraces(existing:Trace[],incoming:Trace[]):Trace[]{const found=new Map<string,Trace>();for(const t of [...existing,...incoming])found.set(`${t.timestamp}|${t.agent}|${t.message}`,t);return [...found.values()].sort((a,b)=>a.timestamp.localeCompare(b.timestamp)).slice(-80)}
 export const emptyBootstrap:Bootstrap={providers:[],stats:{},ports:[],vessels:[],debris:[],hotspots:[],marine:[],agents:[],scenarios:{routes:[],investigations:[]}};
 export async function api<T=any>(path:string,body?:unknown):Promise<T>{const r=await fetch(`/api/${path}`,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});if(!r.ok){let reason='The service is temporarily unavailable.';try{const d=await r.json();reason=typeof d.detail==='string'?d.detail:reason;}catch{}throw new Error(reason)}return r.json()}

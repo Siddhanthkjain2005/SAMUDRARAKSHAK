@@ -1,4 +1,5 @@
 from typing import Literal
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 class RouteRequest(BaseModel):
@@ -7,6 +8,7 @@ class RouteRequest(BaseModel):
     speed_knots: float = Field(default=12, ge=4, le=28)
     reference_fuel_tpd: float = Field(default=24, gt=0, le=500)
     safety_buffer_km: float = Field(default=1.0, ge=0, le=10)
+    planned_at: datetime | None = None
 
 class CleanupRequest(BaseModel):
     hours: float = Field(default=6, ge=1, le=24)

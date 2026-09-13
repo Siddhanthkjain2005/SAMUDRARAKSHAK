@@ -3,19 +3,21 @@ import math
 from collections import defaultdict
 from backend.services.geospatial import get_land_mask,haversine,bearing
 from backend.models.fuel_model import segment_estimate
+from backend.services.forecast_environment import select_forecast,utc_time,iso
 
 class RouteUnavailable(ValueError):
     pass
 
-def nearest_environment(lat,lon,marine,max_distance_km=600):
+def nearest_environment(lat,lon,marine,max_distance_km=600,planned_at=None):
     valid=[x for x in marine if x.get('latitude') is not None and x.get('longitude') is not None]
     if not valid:
         return {}
     item=min(valid,key=lambda m:haversine((lat,lon),(m['latitude'],m['longitude'])))
     distance=haversine((lat,lon),(item['latitude'],item['longitude']))
-    return {**item,'sample_distance_km':round(distance,1)} if distance<=max_distance_km else {}
+    return {**select_forecast(item,planned_at),'sample_distance_km':round(distance,1)} if distance<=max_distance_km else {}
 
-def optimize_route(origin,destination,marine,speed_knots=12,reference_fuel_tpd=24,safety_buffer_km=1,land=None):
+def optimize_route(origin,destination,marine,speed_knots=12,reference_fuel_tpd=24,safety_buffer_km=1,land=None,planned_at=None):
+    forecast_reference=utc_time(planned_at)
     supplied_land=land is not None
     land=land or get_land_mask(safety_buffer_km)
     if land is None:
@@ -58,9 +60,15 @@ def optimize_route(origin,destination,marine,speed_knots=12,reference_fuel_tpd=2
                 midpoint=((p[0]+q[0])/2,(p[1]+q[1])/2)
                 envkey=(round(midpoint[0],1),round(midpoint[1],1))
                 if envkey not in environment_cache:
-                    environment_cache[envkey]=nearest_environment(*midpoint,marine)
+                    environment_cache[envkey]=nearest_environment(*midpoint,marine,planned_at=forecast_reference)
                 estimate=segment_estimate(haversine(p,q)/1.852,bearing(p,q),speed_knots,reference_fuel_tpd,environment_cache[envkey])
-                estimate['environment_available']=bool(environment_cache[envkey])
+                env=environment_cache[envkey]
+                estimate['environment_available']=env.get('complete_environment',False)
+                estimate['current_available']=env.get('current_available',False)
+                estimate['waves_available']=env.get('waves_available',False)
+                estimate['forecast_status']=env.get('forecast_status','UNAVAILABLE')
+                estimate['observation_time']=env.get('observation_time')
+                estimate['observation_age_hours']=env.get('observation_age_hours')
                 edge_cache[key]=estimate
             yield other,edge_cache[key]
     def search(cost):
@@ -84,17 +92,28 @@ def optimize_route(origin,destination,marine,speed_knots=12,reference_fuel_tpd=2
         segments=[edge_cache[(x,y)] for x,y in zip(path,path[1:])]
         totals={key:sum(s[key] for s in segments) for key in ('distance_nm','duration_hours','fuel_t','co2_t')}
         distance=totals['distance_nm']
+        statuses=defaultdict(int)
+        for segment in segments:statuses[segment['forecast_status']]+=1
+        observation_times=sorted(s['observation_time'] for s in segments if s['observation_time'])
+        ages=[s['observation_age_hours'] for s in segments if s['observation_age_hours'] is not None]
         return {**{k:round(v,3) for k,v in totals.items()},'coordinates':[[nodes[n][1],nodes[n][0]] for n in path],
             'mean_current_knots':round(sum(s['current_knots']*s['distance_nm'] for s in segments)/max(distance,.001),3),
             'mean_wave_height':round(sum(s['wave_height']*s['distance_nm'] for s in segments)/max(distance,.001),3),
             'forecast_coverage_pct':round(100*sum(s['distance_nm'] for s in segments if s['environment_available'])/max(distance,.001),1),
+            'current_coverage_pct':round(100*sum(s['distance_nm'] for s in segments if s['current_available'])/max(distance,.001),1),
+            'wave_coverage_pct':round(100*sum(s['distance_nm'] for s in segments if s['waves_available'])/max(distance,.001),1),
+            'forecast':{'provenance':'MODEL FORECAST','requested_time':iso(forecast_reference),
+                'selection':'Nearest hourly conditions at requested planning time; fixed for the route calculation.',
+                'coverage_label':'Complete current-and-wave coverage' if segments and all(s['environment_available'] for s in segments) else 'Incomplete or unavailable model coverage; missing effects are not applied',
+                'observation_time_range':[observation_times[0],observation_times[-1]] if observation_times else [],
+                'maximum_observation_age_hours':max(ages) if ages else None,'segment_status_counts':dict(statuses)},
             'land_intersections':0,'segments':len(segments),'speed_knots':speed_knots}
     baseline,optimized=summarize(baseline_path),summarize(optimized_path)
     fuel_saved=max(0,baseline['fuel_t']-optimized['fuel_t'])
     savings={'fuel_t':round(fuel_saved,3),'fuel_pct':round(100*fuel_saved/max(baseline['fuel_t'],.0001),2),
         'co2_t':round(baseline['co2_t']-optimized['co2_t'],3),'distance_nm':round(baseline['distance_nm']-optimized['distance_nm'],2),
         'eta_minutes':round((optimized['duration_hours']-baseline['duration_hours'])*60,1)}
-    return {'baseline':baseline,'optimized':optimized,'savings':savings,
+    return {'baseline':baseline,'optimized':optimized,'savings':savings,'forecast_reference_time':iso(forecast_reference),
         'origin':origin,'destination':destination,'candidates':[{'coordinates':baseline['coordinates'],'objective':'shortest distance'},{'coordinates':optimized['coordinates'],'objective':'minimum estimated fuel'}],
         'graph':{'water_nodes':len(nodes),'evaluated_nodes':len(visited),'evaluated_edges':len(edge_cache),'land_rejected_edges':len(rejected),'grid_degrees':step},
         'port_access':{'origin_offshore_distance_km':round(haversine(a,nodes[start]),2),'destination_offshore_distance_km':round(haversine(b,nodes[end]),2)},
@@ -103,5 +122,6 @@ def optimize_route(origin,destination,marine,speed_knots=12,reference_fuel_tpd=2
             f'Port coordinates are snapped to offshore grid nodes; harbour approaches are excluded. Land buffer is approximately {safety_buffer_km:g} km.',
             'Natural Earth coastline is generalized. Bathymetry, traffic separation, charted hazards, weather evolution and dynamic closures are not navigationally validated.',
             'Fuel uses a cubic speed law and an illustrative wave-resistance term. Reference burn is supplied by the operator. CO2 uses the default HFO factor 3.114 t/t.',
-            'Nearest cached surface marine model sample within 600 km is used. Missing conditions use zero current and waves and are disclosed by forecast coverage.',
+            'Nearest hourly model forecast within 600 km is selected at the requested planning time (current UTC by default). This time snapshot is fixed across the voyage; weather evolution along the route is not modeled.',
+            'Expired forecasts and missing fields are not applied. Missing effects use the zero-current/calm-water baseline, not a claim of measured calm conditions. Current and wave coverage are reported separately.',
             'Routes use the same requested speed through water. Zero saving is a valid result. Protected-area/legal avoidance is not claimed without verified local geometry.']}

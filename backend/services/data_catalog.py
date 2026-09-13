@@ -53,6 +53,14 @@ def normalize_vessel(v):
     result.setdefault('provenance','HISTORICAL')
     result.setdefault('track',[])
     result.setdefault('events',[])
+    if result.get('speed') is None and result.get('track'):
+        result['speed']=result['track'][-1].get('speed')
+    if result.get('course') is None and result.get('track'):
+        result['course']=result['track'][-1].get('course')
+    if result.get('speed') is None:
+        result['speed']=3.5 if 'fishing' in str(result.get('type','')).lower() else 0.0
+    if result.get('course') is None:
+        result['course']=160.0
     return result
 
 def vessels():

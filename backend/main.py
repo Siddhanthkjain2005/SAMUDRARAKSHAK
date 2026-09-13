@@ -22,6 +22,7 @@ from backend.agents.debris_coordinator import cleanup_plan
 from backend.agents.reporter import render_report
 from backend.models.behaviour_model import behaviour_features,parse_time
 from backend.services.command_regions import filter_named_region
+from backend.services.forecast_environment import select_forecast
 from backend.providers.aisstream import AISStreamProvider
 from backend.providers.global_fishing_watch import GlobalFishingWatchProvider
 from backend.providers.marine_weather import OpenMeteoProvider
@@ -72,8 +73,8 @@ def get_vessels():
     now=storage.now(); current=parse_time(now)
     for v in storage.live_vessels():
         old=found.get(v['id'],{});timestamp=parse_time(v.get('timestamp'))
-        is_recent=timestamp is not None and (current-timestamp).total_seconds()<600
-        v={**old,**v,'events':old.get('events',[]),'provenance':'LIVE' if is_recent and ais.state['status']=='LIVE' else 'REAL DATA · OFFLINE CACHE'}
+        is_recent=timestamp is not None and 0<=(current-timestamp).total_seconds()<600
+        v={**old,**v,'events':old.get('events',[]),'provenance':'LIVE' if is_recent and ais.snapshot()['status']=='LIVE' else 'REAL DATA · OFFLINE CACHE'}
         found[v['id']]=v
     return list(found.values())
 
@@ -84,26 +85,37 @@ def get_hotspots():
     path=config.PROCESSED/'debris.json'
     return _hotspots_cache(path.stat().st_mtime_ns if path.exists() else 0)
 
+def current_marine_samples():
+    return [select_forecast(sample) for sample in records('marine')]
+
 def providers():
-    hist=historical_vessels();marine=records('marine');debris=records('debris');ports=records('ports')
+    hist=historical_vessels();marine=current_marine_samples();debris=records('debris');ports=records('ports')
     entries=catalog();entries=entries if isinstance(entries,list) else []
     boundary_count=sum(len(read_json(name,{}).get('features',[])) for name in ('boundaries.geojson','mpa.geojson') if isinstance(read_json(name,{}),dict))
     historical_ais=next((e for e in entries if e.get('id')=='historical_ais'),{})
     noaa_vessels=[v for v in hist if 'noaa' in str(v.get('source','')).lower()]
-    gfw_vessels=[v for v in hist if 'global fishing watch' in str(v.get('source','')).lower() or str(v.get('source','')).lower()=='gfw']
+    gfw_vessels=records('gfw_identity') or [v for v in hist if 'global fishing watch' in str(v.get('source','')).lower() or str(v.get('source','')).lower()=='gfw']
+    identities=records('vessel_identity') or hist
+    identity_ids={str(v.get('mmsi') or v.get('id')) for v in identities+gfw_vessels}
+    ais_state=ais.snapshot()
+    marine_usable=sum(bool(m.get('environment_available')) for m in marine)
+    marine_complete=sum(bool(m.get('complete_environment')) for m in marine)
+    marine_status=('MODEL FORECAST' if marine_complete==len(marine) else 'PARTIAL MODEL FORECAST') if marine_usable else 'FORECAST EXPIRED / UNAVAILABLE'
     bathymetry=records('bathymetry');weather=records('weather')
     items=[
         {'id':'google_maps','name':'Google Maps','status':'CONFIGURED' if config.GOOGLE_MAPS_API_KEY else 'MISSING KEY','records':None,'provenance':'MAP PROVIDER','detail':'Browser map availability is verified by the map component.'},
-        {'id':'aisstream','name':'AISStream',**ais.state,'records':storage.ais_count(),'provenance':'LIVE' if ais.state['status']=='LIVE' else 'OFFLINE CACHE'},
+        {'id':'aisstream','name':'AISStream',**ais_state,'records':storage.ais_count(),'provenance':'LIVE' if ais_state['status']=='LIVE' else 'OFFLINE CACHE'},
         {'id':'gfw','name':'Global Fishing Watch',**gfw.state,'records':len(gfw_vessels),'provenance':'HISTORICAL'},
         {'id':'noaa_ais','name':'NOAA Historical AIS','status':'OFFLINE REAL DATASET' if noaa_vessels else 'UNAVAILABLE',
             'records':int(historical_ais.get('records',0)) if noaa_vessels else 0,'provenance':'HISTORICAL REAL DATA',
             'replay_vessels':len(noaa_vessels),'replay_observations':sum(len(v.get('track',[])) for v in noaa_vessels),
             'detail':'US coastal AIS archive; global demonstration context, not Indian vessel positions. Raw observations and replay subset are counted separately.',
             'last_refresh':historical_ais.get('date_downloaded')},
-        {'id':'vessel_identity','name':'Vessel Identity Cache','status':'LOCAL CACHE' if hist else 'UNAVAILABLE','records':len(hist),
-            'provenance':'HISTORICAL REAL DATA','detail':'Distinct curated vessel identities loaded by the app, with their original source provider.'},
-        {'id':'marine','name':'Open-Meteo Marine','status':'MODEL FORECAST' if marine else 'UNAVAILABLE','records':len(marine),'provenance':'MODEL FORECAST','detail':'Cached numerical marine forecast, not in-situ observation.','last_refresh':max([str(m.get('timestamp','')) for m in marine] or [''])},
+        {'id':'vessel_identity','name':'Vessel Identity Cache','status':'LOCAL CACHE' if identity_ids else 'UNAVAILABLE','records':len(identity_ids),
+            'provenance':'HISTORICAL REAL DATA','detail':'Distinct cached vessel identities with their original source provider; only a curated subset has replay tracks.'},
+        {'id':'marine','name':'Open-Meteo Marine','status':marine_status if marine else 'UNAVAILABLE','records':len(marine),
+            'provenance':'MODEL FORECAST','detail':f'{marine_usable}/{len(marine)} cached samples contain conditions valid for current UTC; {marine_complete} include both currents and waves. Numerical model output, not in-situ observation.',
+            'usable_samples':marine_usable,'complete_samples':marine_complete,'last_refresh':max([str(m.get('observation_time') or '') for m in marine] or [''])},
         {'id':'debris','name':'Marine Debris Observations','status':'OFFLINE REAL DATASET' if debris else 'UNAVAILABLE','records':len(debris),'provenance':'HISTORICAL REAL DATA','detail':'Real sampled debris observations; historical concentration is not present-day recoverable mass.'},
         {'id':'ports','name':'World Ports','status':'LOCAL CACHE' if ports else 'UNAVAILABLE','records':len(ports),'provenance':'REAL DATA','detail':'Downloaded real port coordinates and identities.'},
         {'id':'boundaries','name':'Marine Boundaries','status':'LOCAL CACHE' if boundary_count else 'UNAVAILABLE','records':boundary_count,'provenance':'REAL DATA','detail':'Downloaded polygons; boundary legal interpretation requires verification.'},
@@ -130,7 +142,7 @@ def bootstrap():
     v=get_vessels();p=records('ports');d=records('debris');h=get_hotspots()
     return {'providers':providers(),'stats':{'live_vessels':sum(x['provenance']=='LIVE' for x in v),'vessels':len(v),'ports':len(p),
         'debris_observations':len(d),'hotspots':len(h),**storage.impact_summary(),'recorded_ais_observations':storage.ais_count()},
-        'ports':p,'vessels':v[:1000],'debris':d[:2500],'hotspots':h,'marine':records('marine'),'agents':agent_states(),
+        'ports':p,'vessels':v[:1000],'debris':d[:2500],'hotspots':h,'marine':current_marine_samples(),'agents':agent_states(),
         'scenarios':{'routes':route_scenarios(p),'investigations':[x['id'] for x in v[:3]],'historical_investigations':[x['id'] for x in historical_vessels()[:3]]},
         'recent_missions':storage.mission_summaries(10)['missions'],'replay':replay.snapshot(),
         'notice':'Decision-support prototype. Maritime activity classifications require human verification.'}
@@ -177,7 +189,7 @@ def data_catalog():return catalog()
 
 @app.get('/api/data/{dataset}')
 def data_preview(dataset:str,limit:int=Query(20,ge=1,le=500),offset:int=Query(0,ge=0)):
-    allowed={'ports','vessels','debris','marine','bathymetry','weather'}
+    allowed={'ports','vessels','vessel_identity','gfw_identity','debris','marine','bathymetry','weather'}
     if dataset not in allowed:raise HTTPException(404,'Unknown preview dataset.')
     rows=records(dataset)
     return {'dataset':dataset,'count':len(rows),'offset':offset,'rows':rows[offset:offset+limit]}
@@ -193,11 +205,11 @@ def route_workflow(request):
     if not origin or not destination:raise HTTPException(422,'Origin or destination port is not present in the real port cache.')
     workflow=Workflow('route','NEW_SHIPPING_MISSION')
     marine=records('marine')
-    workflow.record('environment','Loaded normalized surface current and wave forecast samples.',{'samples':len(marine),'provenance':'MODEL FORECAST'})
+    workflow.timed_record('environment','Loaded normalized surface current and wave forecast samples.',lambda:{'samples':len(marine),'provenance':'MODEL FORECAST'})
     try:
-        result=workflow.run('green_route','Solved shortest-distance and minimum-fuel paths on the same land-filtered graph.',optimize_route,origin,destination,marine,request.speed_knots,request.reference_fuel_tpd,request.safety_buffer_km)
+        result=workflow.run('green_route','Solved shortest-distance and minimum-fuel paths on the same land-filtered graph.',optimize_route,origin,destination,marine,request.speed_knots,request.reference_fuel_tpd,request.safety_buffer_km,planned_at=request.planned_at)
     except RouteUnavailable as exc:raise HTTPException(422,str(exc)) from exc
-    workflow.record('skeptic','Verified route constraints and exposed model limitations.',{'land_intersections':0,'navigational_certification':False,'savings_derived_from_engine':True})
+    workflow.timed_record('skeptic','Verified route constraints and exposed model limitations.',lambda:{'land_intersections':0,'navigational_certification':False,'savings_derived_from_engine':True})
     return workflow.finish(result)
 
 @app.post('/api/routes/optimize')
