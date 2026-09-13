@@ -230,8 +230,10 @@ az webapp up \
 
 ## 👥 Contributors & Hackathon Team
 
-- **Siddhanth Jain** — Backend Architecture, Multi-Agent Orchestration & Geospatial Engines
-- **Swetha** — Platform Engineering, Cloud Infrastructure & Azure Deployment
+- **Siddhanth K Jain**
+- **Adithya P**
+- **Vishwas Y K**
+- **Vikas Y K**
 
 ---
 
