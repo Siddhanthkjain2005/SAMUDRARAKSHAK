@@ -6,19 +6,19 @@ def evidence_completeness(item):
     components=[
         {'label':'Named source','points':15 if item.get('source') and item['source'] not in ('UNATTRIBUTED EVENT','SOURCE UNAVAILABLE') else 0},
         {'label':'Parseable original timestamp','points':15 if parse_time(item.get('timestamp')) else 0},
-        {'label':'Original source observation retained','points':25 if item.get('raw') else 0},
+        {'label':'Original source observation retained','points':25 if item.get('raw') is not None and item.get('raw') != '' else 0},
         {'label':'Source URL retained','points':10 if item.get('source_url') else 0},
         {'label':'Vessel identifier linkage retained','points':10 if item.get('vessel_id') else 0},
     ]
     identity=item.get('identity_fields') or {}
     if identity:
         available=sum(identity.get(field) is not None and identity.get(field) != '' for field in ('mmsi','name','imo','callsign','type','heading'))
-        components.append({'label':'Identity metadata completeness','points':round(15*available/6,1)})
+        components.append({'label':'Identity metadata completeness','points':round(15*available/max(1, sum(1 for f in ('mmsi','name','imo','callsign','type','heading') if f in identity)),1)})
     coverage=item.get('coverage') or {}
     if coverage:
         samples=float(coverage.get('samples') or 0)
         duration=float(coverage.get('duration_minutes') or 0)
-        components.append({'label':'Temporal observation coverage','points':round(15*min(1,samples/12,duration/60),1)})
+        components.append({'label':'Temporal observation coverage','points':round(15*min(1,max(samples/6,duration/30)),1)})
     return {'confidence':sum(c['points'] for c in components),'confidence_components':components,
         'confidence_methodology':'Metadata completeness index from source, timestamp, raw observation, URL, vessel linkage, identity fields and temporal coverage; not a calibrated probability of observation accuracy or illegality.'}
 
@@ -46,8 +46,8 @@ def fuse_risk(evidence,behaviour=None):
     if evidence:
         mean_completeness=sum(float(e.get('confidence',0)) for e in evidence)/len(evidence)
         sources={e.get('source','') for e in evidence if e.get('source')}
-        source_bonus=min(12,max(0,len(sources)-1)*6)
-        confidence=min(95,round(mean_completeness*.72 + min(len(evidence),5)*3 + source_bonus))
+        source_bonus=min(8, max(0, len(sources)-1)*4)
+        confidence=min(94, max(0, round(mean_completeness * 0.98 + min(len(evidence), 5) * 1.5 + source_bonus)))
     else:
         confidence=0
     # Confidence describes completeness and provenance; source diversity adds a
@@ -56,5 +56,5 @@ def fuse_risk(evidence,behaviour=None):
     return {'risk_score':round(score),'confidence_score':confidence,
         'risk_level':'HIGH' if score>=65 else 'ELEVATED' if score>=35 else 'LOW',
         'contributors':contributors,'methodology':'Weighted screening signals plus a bounded observed-trajectory contribution; no legal or calibrated probability interpretation.',
-        'confidence_methodology':'Mean evidence metadata completeness × 0.72, plus 3 per evidence item (up to 5), plus 6 per additional named source (up to 12), capped at 95. This is not a calibrated probability of illegal activity.',
+        'confidence_methodology':'Mean evidence metadata completeness × 0.98, plus 1.5 per evidence item (up to 5), plus 4 per additional named source (up to 8), capped at 94. This is not a calibrated probability of illegal activity.',
         'source_count':len(sources)}

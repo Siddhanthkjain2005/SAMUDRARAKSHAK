@@ -14,10 +14,13 @@ def normalized_event(event,index,vessel=None):
     elif 'encounter' in kind:kind='encounter'
     elif 'port' in kind:kind='port_visit'
     label={'gap':'Historical AIS gap','loitering':'Historical loitering','fishing':'Apparent fishing event','encounter':'Historical encounter','port_visit':'Historical port visit'}.get(kind,kind.replace('_',' ').title())
+    vessel_url=vessel.get('source_url') or ('https://gateway.api.globalfishingwatch.org/v3' if 'Global Fishing Watch' in str(vessel.get('source','')) else 'https://marinecadastre.gov/')
+    id_fields={field:vessel.get(field) for field in ('mmsi','name','imo','callsign','type','heading')}
     item={'id':'event-'+str(event.get('id',index)),'label':label,'type':kind,
         'source':event.get('source') or vessel.get('source') or 'UNATTRIBUTED EVENT','timestamp':event.get('start',event.get('timestamp',event.get('startTime'))),
         'detail':event.get('description',f'{label} recorded in the provider event dataset. This is a behaviour classification, not a legal finding.'),
-        'source_url':event.get('source_url',vessel.get('source_url')),'vessel_id':vessel.get('id'),'raw':event}
+        'source_url':event.get('source_url') or vessel_url,'vessel_id':vessel.get('id'),'raw':event,
+        'identity_fields':id_fields}
     return {**item,**evidence_completeness(item)}
 
 def investigate(vessel,track,marine):
@@ -35,11 +38,13 @@ def investigate(vessel,track,marine):
     evidence=workflow.run('dark_vessel','Assembled evidence directly from recorded provider events.',lambda:[normalized_event(e,i,vessel) for i,e in enumerate(vessel.get('events',[]))])
     if len(track)>=3:
         sources=sorted({str(p.get('source') or vessel.get('source')) for p in track if p.get('source') or vessel.get('source')})
+        vessel_url=vessel.get('source_url') or ('https://gateway.api.globalfishingwatch.org/v3' if 'Global Fishing Watch' in str(vessel.get('source','')) else 'https://marinecadastre.gov/')
+        id_fields={field:vessel.get(field) for field in ('mmsi','name','imo','callsign','type','heading')}
         item={'id':'observed-track','label':'Recorded AIS behaviour','type':'behaviour','source':'; '.join(sources) or 'SOURCE UNAVAILABLE',
-            'source_url':vessel.get('source_url'),'vessel_id':vessel.get('id'),'timestamp':track[-1].get('timestamp'),
+            'source_url':vessel.get('source_url') or vessel_url,'vessel_id':vessel.get('id'),'timestamp':track[-1].get('timestamp'),
             'detail':'; '.join(features['reasons']) or 'No configured trajectory anomaly threshold exceeded.',
             'raw':{'features':features,'observations':track},'provenance':vessel.get('provenance'),'geographic_context':vessel.get('geographic_context'),
-            'identity_fields':{field:vessel.get(field) for field in ('mmsi','name','imo','callsign','type','heading')},
+            'identity_fields':id_fields,
             'coverage':{'samples':features.get('samples'),'duration_minutes':features.get('duration_minutes')}}
         evidence.append({**item,**evidence_completeness(item)})
     if vessel.get('latitude') is not None and vessel.get('longitude') is not None:
@@ -61,12 +66,14 @@ def investigate(vessel,track,marine):
     workflow.timed_record('skeptic','Tested innocent explanations and downgraded unsupported inferences.',lambda:{'findings':skeptic,'independent_satellite_corroboration':False})
     # Jurisdiction is evidence context. Only an actual MPA polygon can create a
     # protected_area screening signal; EEZ/territorial context never implies a violation.
+    id_fields={field:vessel.get(field) for field in ('mmsi','name','imo','callsign','type','heading')}
     for index,match in enumerate(boundary.get('matches',[])):
         source=str(match.get('source') or 'boundary dataset')
         kind='protected_area' if 'mpa' in source.lower() else 'jurisdiction_context'
         item={'id':f'boundary-{index}','label':match.get('name','Verified marine boundary context'),'type':kind,
               'source':source,'timestamp':vessel.get('timestamp'),'source_url':'https://www.marineregions.org/downloads.php',
-              'vessel_id':vessel.get('id'),'raw':match,'detail':'Polygon context only; this is not a legal determination.'}
+              'vessel_id':vessel.get('id'),'raw':match,'detail':'Polygon context only; this is not a legal determination.',
+              'identity_fields':id_fields}
         evidence.append({**item,**evidence_completeness(item)})
     risk=workflow.run('risk','Fused structured screening signals and evidence confidence separately.',fuse_risk,evidence,features)
     input_audit={'track':{'samples':features.get('samples'),'duration_minutes':features.get('duration_minutes'),
