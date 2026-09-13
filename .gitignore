@@ -1,9 +1,13 @@
+.azure/
 .env
 .env.*
 !.env.example
 .venv/
 node_modules/
+**/node_modules/**
 .next/
+**/.next/**
+*.zip
 __pycache__/
 *.pyc
 .pytest_cache/

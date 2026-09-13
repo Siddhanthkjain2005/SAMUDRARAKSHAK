@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from fastapi import FastAPI,HTTPException,WebSocket,WebSocketDisconnect,Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse,FileResponse
+from fastapi.staticfiles import StaticFiles
 from backend import config
 from backend.schemas import RouteRequest,CleanupRequest,ReplanRequest,CommandRequest,ReplayRequest
 from backend.services import storage
@@ -66,7 +67,7 @@ async def lifespan(app):
     await asyncio.gather(*background_tasks,return_exceptions=True)
 
 app=FastAPI(title='SamudraRakshak AI',version='1.0.0',description='Unified maritime decision-support engine with auditable real-data provenance.',lifespan=lifespan)
-app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:3000','http://127.0.0.1:3000','http://localhost:3001','http://127.0.0.1:3001'],allow_methods=['GET','POST'],allow_headers=['Content-Type'])
+app.add_middleware(CORSMiddleware,allow_origins=['*'],allow_methods=['*'],allow_headers=['*'])
 
 def get_vessels():
     found={str(v['id']):v for v in historical_vessels()}
@@ -316,3 +317,19 @@ async def websocket_endpoint(websocket:WebSocket):
             message=await websocket.receive_text()
             if message=='ping':await websocket.send_json({'type':'pong','data':{'timestamp':storage.now()}})
     except (WebSocketDisconnect,RuntimeError):manager.disconnect(websocket)
+
+STATIC_DIR = config.ROOT / 'frontend' / 'out'
+if STATIC_DIR.exists():
+    _next_dir = STATIC_DIR / '_next'
+    if _next_dir.exists():
+        app.mount('/_next', StaticFiles(directory=str(_next_dir)), name='next-static')
+
+    @app.get('/{full_path:path}')
+    async def serve_frontend(full_path: str):
+        file_path = STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        index_file = STATIC_DIR / 'index.html'
+        if index_file.is_file():
+            return FileResponse(str(index_file))
+        return FileResponse(str(STATIC_DIR / '404.html'))
