@@ -237,7 +237,6 @@ az webapp up \
 
 ---
 
-## 📜 License & Attribution
+## 🌊 Data Attribution
 
-This project is licensed under the [MIT License](LICENSE). 
 Maritime datasets are credited to their respective open-access providers: Global Fishing Watch, NOAA, Flanders Marine Institute (Marine Regions), UNEP-WCMC, GEBCO, and Natural Earth.
